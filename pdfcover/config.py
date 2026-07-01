@@ -12,7 +12,7 @@ OCR_CONFIG: Final = {
     "force_ocr": True,             # Force OCR even if text exists
     "optimize": 1,                  # Light optimization
     "deskew": True,                 # Auto-rotate skewed pages
-    "clean": True,                  # Clean noise from images
+    # Note: 'clean' removed - requires unpaper external program
 }
 
 # File extension for output files
