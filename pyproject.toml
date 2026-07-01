@@ -9,7 +9,7 @@ description = "Convert scanned PDFs to searchable PDFs with OCR"
 readme = "README.md"
 requires-python = ">=3.10"
 dependencies = [
-    "ocrmypython>=1.9",
+    "ocrmypdf>=14.0",
     "pypdf>=3.0",
 ]
 
