@@ -22,3 +22,13 @@ def test_max_content_length():
     """Test that max content length is set."""
     app = create_app()
     assert app.config['MAX_CONTENT_LENGTH'] == 100 * 1024 * 1024
+
+
+def test_root_route():
+    """Test that root route returns HTML."""
+    app = create_app()
+    client = app.test_client()
+    response = client.get('/')
+    assert response.status_code == 200
+    assert b'PDF' in response.data
+    assert b'html' in response.data.lower()

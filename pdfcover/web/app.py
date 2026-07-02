@@ -2,7 +2,7 @@
 
 import os
 from pathlib import Path
-from flask import Flask
+from flask import Flask, render_template
 
 OUTPUT_DIR = Path('D:/Users/luocj/pyProject/ky/pdfcover/coverdPDF')
 
@@ -24,5 +24,9 @@ def create_app(testing=True):
 
     # Ensure output directory exists
     OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
+
+    @app.route('/')
+    def index():
+        return render_template('index.html')
 
     return app

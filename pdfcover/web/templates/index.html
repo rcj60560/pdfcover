@@ -1,0 +1,208 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>PDF 转换工具</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 20px;
+        }
+
+        .container {
+            background: white;
+            border-radius: 12px;
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+            max-width: 500px;
+            width: 100%;
+            padding: 40px;
+        }
+
+        h1 {
+            text-align: center;
+            color: #333;
+            margin-bottom: 30px;
+            font-size: 24px;
+        }
+
+        .file-section {
+            margin-bottom: 20px;
+        }
+
+        .file-input-wrapper {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            margin-bottom: 15px;
+        }
+
+        input[type="file"] {
+            display: none;
+        }
+
+        .file-button {
+            background: #667eea;
+            color: white;
+            padding: 10px 20px;
+            border: none;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 14px;
+            transition: background 0.2s;
+        }
+
+        .file-button:hover {
+            background: #5568d3;
+        }
+
+        .file-info {
+            color: #666;
+            font-size: 14px;
+        }
+
+        .convert-button {
+            width: 100%;
+            background: #667eea;
+            color: white;
+            padding: 12px;
+            border: none;
+            border-radius: 6px;
+            font-size: 16px;
+            cursor: pointer;
+            transition: background 0.2s;
+        }
+
+        .convert-button:hover:not(:disabled) {
+            background: #5568d3;
+        }
+
+        .convert-button:disabled {
+            background: #ccc;
+            cursor: not-allowed;
+        }
+
+        .status-section {
+            margin-top: 20px;
+            padding: 15px;
+            border-radius: 6px;
+            background: #f5f5f5;
+            min-height: 60px;
+        }
+
+        .status {
+            color: #666;
+            font-size: 14px;
+        }
+
+        .status.success {
+            color: #28a745;
+        }
+
+        .status.error {
+            color: #dc3545;
+        }
+
+        .output-path {
+            margin-top: 10px;
+            font-size: 12px;
+            color: #999;
+            word-break: break-all;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>PDF 转换工具</h1>
+
+        <div class="file-section">
+            <div class="file-input-wrapper">
+                <span>📁</span>
+                <button class="file-button" onclick="document.getElementById('fileInput').click()">浏览...</button>
+                <input type="file" id="fileInput" accept=".pdf" onchange="handleFileSelect(event)">
+            </div>
+            <div class="file-info" id="fileInfo">未选择文件</div>
+        </div>
+
+        <button class="convert-button" id="convertBtn" onclick="startConversion()" disabled>开始转换</button>
+
+        <div class="status-section">
+            <div class="status" id="status">等待操作...</div>
+            <div class="output-path" id="outputPath"></div>
+        </div>
+    </div>
+
+    <script>
+        let selectedFile = null;
+
+        function handleFileSelect(event) {
+            const file = event.target.files[0];
+            if (file) {
+                if (!file.name.toLowerCase().endsWith('.pdf')) {
+                    showStatus('请选择 PDF 文件', 'error');
+                    return;
+                }
+                selectedFile = file;
+                const sizeMB = (file.size / (1024 * 1024)).toFixed(2);
+                document.getElementById('fileInfo').textContent = `${file.name} (${sizeMB} MB)`;
+                document.getElementById('convertBtn').disabled = false;
+                showStatus('准备就绪', '');
+            }
+        }
+
+        function startConversion() {
+            if (!selectedFile) {
+                showStatus('请先选择文件', 'error');
+                return;
+            }
+
+            const formData = new FormData();
+            formData.append('file', selectedFile);
+
+            document.getElementById('convertBtn').disabled = true;
+            showStatus('正在转换...', '');
+
+            fetch('/api/convert', {
+                method: 'POST',
+                body: formData
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.status === 'success') {
+                    showStatus('✓ 转换完成！', 'success');
+                    document.getElementById('outputPath').textContent = `输出: ${data.output_path}`;
+                } else {
+                    showStatus(`✗ 转换失败: ${data.message}`, 'error');
+                    if (data.error) {
+                        document.getElementById('outputPath').textContent = data.error;
+                    }
+                }
+            })
+            .catch(error => {
+                showStatus('网络错误', 'error');
+                console.error('Error:', error);
+            })
+            .finally(() => {
+                document.getElementById('convertBtn').disabled = false;
+            });
+        }
+
+        function showStatus(message, type) {
+            const statusEl = document.getElementById('status');
+            statusEl.textContent = message;
+            statusEl.className = 'status ' + type;
+        }
+    </script>
+</body>
+</html>
