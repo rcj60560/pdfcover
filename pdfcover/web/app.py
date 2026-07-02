@@ -6,6 +6,7 @@ from flask import Flask, render_template, request, jsonify
 from werkzeug.utils import secure_filename
 import tempfile
 from pdfcover.processor import process_file
+from pdfcover.config import DEFAULT_OUTPUT_SUFFIX
 
 OUTPUT_DIR = Path('D:/Users/luocj/pyProject/ky/pdfcover/coverdPDF')
 
@@ -73,7 +74,7 @@ def create_app(testing=True):
         try:
             # Process the file
             output_dir = Path(app.config['OUTPUT_DIR'])
-            output_path = output_dir / f"{Path(filename).stem}_ocr.pdf"
+            output_path = output_dir / f"{Path(filename).stem}{DEFAULT_OUTPUT_SUFFIX}.pdf"
 
             result = process_file(temp_path, output_path)
 

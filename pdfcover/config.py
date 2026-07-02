@@ -16,4 +16,4 @@ OCR_CONFIG: Final = {
 }
 
 # File extension for output files
-DEFAULT_OUTPUT_SUFFIX: Final = "_ocr"
+DEFAULT_OUTPUT_SUFFIX: Final = "+OCR"
