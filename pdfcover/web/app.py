@@ -21,7 +21,7 @@ def create_app(testing=True):
     """
     app = Flask(__name__)
     app.config['TESTING'] = testing
-    app.config['MAX_CONTENT_LENGTH'] = 100 * 1024 * 1024  # 100MB
+    app.config['MAX_CONTENT_LENGTH'] = 1024 * 1024 * 1024  # 1GB
     app.config['OUTPUT_DIR'] = str(OUTPUT_DIR)
     app.config['UPLOAD_FOLDER'] = str(Path.cwd() / 'temp')
 
