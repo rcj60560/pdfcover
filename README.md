@@ -79,6 +79,35 @@ results = convert_folder("/path/to/pdfs", output_suffix="_searchable")
 # results = convert_folder("/path/to/pdfs", recursive=True)
 ```
 
+## Web 界面使用
+
+### 启动 Web 服务器
+
+**Windows:**
+```bash
+# 双击 start_web.bat 或在命令行运行
+start_web.bat
+```
+
+**macOS/Linux:**
+```bash
+./start_web.sh
+```
+
+或直接运行:
+```bash
+python -m pdfcover.web
+```
+
+服务器启动后会自动打开浏览器访问 http://127.0.0.1:5000
+
+### 使用流程
+
+1. 在网页上点击"浏览"选择 PDF 文件
+2. 点击"开始转换"
+3. 等待转换完成
+4. 转换后的文件保存在 `coverdPDF/` 目录
+
 ## API 文档
 
 ### `convert_folder(folder_path, output_suffix="_ocr", recursive=False)`
