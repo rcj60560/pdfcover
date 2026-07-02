@@ -32,3 +32,9 @@ def test_root_route():
     assert response.status_code == 200
     assert b'PDF' in response.data
     assert b'html' in response.data.lower()
+
+
+def test_module_main_exists():
+    """Test that __main__ module can be imported."""
+    from pdfcover.web import __main__
+    assert hasattr(__main__, 'main')
