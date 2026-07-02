@@ -20,6 +20,9 @@ dev = [
     "pytest-mock>=3.10",
 ]
 
+[tool.setuptools]
+packages = ["pdfcover"]
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 python_files = ["test_*.py"]
