@@ -3,205 +3,582 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>PDF 转换工具</title>
+    <title>PDFCover</title>
     <style>
         * {
+            box-sizing: border-box;
             margin: 0;
             padding: 0;
-            box-sizing: border-box;
         }
 
         body {
-            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
             min-height: 100vh;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            padding: 20px;
+            background: #eef2f7;
+            color: #1f2937;
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+            padding: 24px;
         }
 
-        .container {
-            background: white;
-            border-radius: 12px;
-            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
-            max-width: 500px;
-            width: 100%;
-            padding: 40px;
+        .shell {
+            width: min(760px, 100%);
+            margin: 0 auto;
+        }
+
+        header {
+            margin-bottom: 18px;
         }
 
         h1 {
-            text-align: center;
-            color: #333;
-            margin-bottom: 30px;
-            font-size: 24px;
+            font-size: 28px;
+            font-weight: 700;
+            letter-spacing: 0;
         }
 
-        .file-section {
-            margin-bottom: 20px;
+        .app-panel {
+            background: #ffffff;
+            border: 1px solid #dbe3ee;
+            border-radius: 8px;
+            box-shadow: 0 16px 36px rgba(31, 41, 55, 0.12);
+            overflow: hidden;
         }
 
-        .file-input-wrapper {
+        .tabs {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            border-bottom: 1px solid #dbe3ee;
+            background: #f8fafc;
+        }
+
+        .tab {
+            min-height: 48px;
+            border: 0;
+            border-right: 1px solid #dbe3ee;
+            background: transparent;
+            color: #475569;
+            cursor: pointer;
+            font-size: 15px;
+            font-weight: 600;
+        }
+
+        .tab:last-child {
+            border-right: 0;
+        }
+
+        .tab.active {
+            background: #ffffff;
+            color: #0f766e;
+            box-shadow: inset 0 -3px 0 #0f766e;
+        }
+
+        .pane {
+            display: none;
+            padding: 28px;
+        }
+
+        .pane.active {
+            display: block;
+        }
+
+        .field-group {
+            display: grid;
+            gap: 14px;
+            margin-bottom: 18px;
+        }
+
+        .file-row {
             display: flex;
             align-items: center;
-            gap: 10px;
-            margin-bottom: 15px;
+            gap: 12px;
+            flex-wrap: wrap;
         }
 
         input[type="file"] {
             display: none;
         }
 
+        label,
+        .label {
+            color: #334155;
+            display: block;
+            font-size: 14px;
+            font-weight: 600;
+            margin-bottom: 8px;
+        }
+
+        .file-button,
+        .primary-button {
+            border: 0;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 15px;
+            font-weight: 600;
+            min-height: 42px;
+            padding: 0 18px;
+        }
+
         .file-button {
-            background: #667eea;
-            color: white;
-            padding: 10px 20px;
-            border: none;
-            border-radius: 6px;
-            cursor: pointer;
-            font-size: 14px;
-            transition: background 0.2s;
+            background: #e0f2fe;
+            color: #075985;
         }
 
-        .file-button:hover {
-            background: #5568d3;
-        }
-
-        .file-info {
-            color: #666;
-            font-size: 14px;
-        }
-
-        .convert-button {
+        .primary-button {
             width: 100%;
-            background: #667eea;
-            color: white;
-            padding: 12px;
-            border: none;
-            border-radius: 6px;
-            font-size: 16px;
-            cursor: pointer;
-            transition: background 0.2s;
+            background: #0f766e;
+            color: #ffffff;
         }
 
-        .convert-button:hover:not(:disabled) {
-            background: #5568d3;
+        .primary-button:hover:not(:disabled) {
+            background: #115e59;
         }
 
-        .convert-button:disabled {
-            background: #ccc;
+        .primary-button:disabled {
+            background: #cbd5e1;
             cursor: not-allowed;
         }
 
-        .status-section {
-            margin-top: 20px;
-            padding: 15px;
+        .file-info {
+            color: #64748b;
+            font-size: 14px;
+            min-width: 180px;
+            overflow-wrap: anywhere;
+        }
+
+        .page-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 14px;
+        }
+
+        input[type="number"] {
+            width: 100%;
+            border: 1px solid #cbd5e1;
             border-radius: 6px;
-            background: #f5f5f5;
-            min-height: 60px;
+            color: #1f2937;
+            font-size: 16px;
+            min-height: 42px;
+            padding: 8px 10px;
+        }
+
+        input[type="number"]:focus {
+            border-color: #0f766e;
+            outline: 2px solid rgba(15, 118, 110, 0.16);
+        }
+
+        .status-section {
+            border-top: 1px solid #dbe3ee;
+            background: #f8fafc;
+            padding: 18px 28px;
+            min-height: 78px;
         }
 
         .status {
-            color: #666;
+            color: #475569;
             font-size: 14px;
+            line-height: 1.5;
         }
 
         .status.success {
-            color: #28a745;
+            color: #15803d;
         }
 
         .status.error {
-            color: #dc3545;
+            color: #b91c1c;
         }
 
         .output-path {
-            margin-top: 10px;
-            font-size: 12px;
-            color: #999;
-            word-break: break-all;
+            color: #64748b;
+            font-size: 13px;
+            margin-top: 8px;
+            overflow-wrap: anywhere;
+        }
+
+        .hint {
+            color: #94a3b8;
+            font-size: 13px;
+            line-height: 1.5;
+            margin-top: 6px;
+        }
+
+        .preview-section {
+            display: none;
+            margin-top: 18px;
+        }
+
+        .preview-section.visible {
+            display: block;
+        }
+
+        .preview-head {
+            align-items: center;
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: 8px;
+        }
+
+        .preview-head .label {
+            margin-bottom: 0;
+        }
+
+        .download-link {
+            background: #e0f2fe;
+            border-radius: 6px;
+            color: #075985;
+            font-size: 14px;
+            font-weight: 600;
+            min-height: 36px;
+            padding: 0 14px;
+            display: inline-flex;
+            align-items: center;
+            text-decoration: none;
+        }
+
+        .preview-text {
+            background: #f8fafc;
+            border: 1px solid #dbe3ee;
+            border-radius: 6px;
+            color: #1f2937;
+            font-family: "SFMono-Regular", Consolas, "Liberation Mono", monospace;
+            font-size: 13px;
+            line-height: 1.6;
+            max-height: 420px;
+            overflow: auto;
+            padding: 14px;
+            white-space: pre-wrap;
+            overflow-wrap: anywhere;
+        }
+
+        @media (max-width: 560px) {
+            body {
+                padding: 14px;
+            }
+
+            .pane {
+                padding: 20px;
+            }
+
+            .page-grid {
+                grid-template-columns: 1fr;
+            }
+
+            h1 {
+                font-size: 24px;
+            }
         }
     </style>
 </head>
 <body>
-    <div class="container">
-        <h1>PDF 转换工具</h1>
+    <main class="shell">
+        <header>
+            <h1>PDFCover</h1>
+        </header>
 
-        <div class="file-section">
-            <div class="file-input-wrapper">
-                <span>📁</span>
-                <button class="file-button" onclick="document.getElementById('fileInput').click()">浏览...</button>
-                <input type="file" id="fileInput" accept=".pdf" onchange="handleFileSelect(event)">
+        <section class="app-panel">
+            <div class="tabs" role="tablist">
+                <button class="tab active" id="ocrTab" type="button" onclick="switchMode('ocr')">OCR 转换</button>
+                <button class="tab" id="extractTab" type="button" onclick="switchMode('extract')">截取页码</button>
+                <button class="tab" id="reflowTab" type="button" onclick="switchMode('reflow')">单列整理</button>
             </div>
-            <div class="file-info" id="fileInfo">未选择文件</div>
-        </div>
 
-        <button class="convert-button" id="convertBtn" onclick="startConversion()" disabled>开始转换</button>
+            <div class="pane active" id="ocrPane">
+                <div class="field-group">
+                    <div>
+                        <span class="label">PDF 文件</span>
+                        <div class="file-row">
+                            <button class="file-button" type="button" onclick="document.getElementById('ocrFile').click()">选择文件</button>
+                            <input type="file" id="ocrFile" accept=".pdf" onchange="handleFileSelect(event, 'ocr')">
+                            <span class="file-info" id="ocrFileInfo">未选择文件</span>
+                        </div>
+                    </div>
+                </div>
 
-        <div class="status-section">
-            <div class="status" id="status">等待操作...</div>
-            <div class="output-path" id="outputPath"></div>
-        </div>
-    </div>
+                <button class="primary-button" id="ocrButton" type="button" onclick="startOcr()" disabled>开始转换</button>
+            </div>
+
+            <div class="pane" id="extractPane">
+                <div class="field-group">
+                    <div>
+                        <span class="label">PDF 文件</span>
+                        <div class="file-row">
+                            <button class="file-button" type="button" onclick="document.getElementById('extractFile').click()">选择文件</button>
+                            <input type="file" id="extractFile" accept=".pdf" onchange="handleFileSelect(event, 'extract')">
+                            <span class="file-info" id="extractFileInfo">未选择文件</span>
+                        </div>
+                    </div>
+
+                    <div class="page-grid">
+                        <div>
+                            <label for="startPage">起始页</label>
+                            <input type="number" id="startPage" min="1" step="1" value="50" oninput="syncExtractButton()">
+                        </div>
+                        <div>
+                            <label for="endPage">结束页</label>
+                            <input type="number" id="endPage" min="1" step="1" value="60" oninput="syncExtractButton()">
+                        </div>
+                    </div>
+                </div>
+
+                <button class="primary-button" id="extractButton" type="button" onclick="startExtract()" disabled>生成新 PDF</button>
+            </div>
+
+            <div class="pane" id="reflowPane">
+                <div class="field-group">
+                    <div>
+                        <span class="label">PDF 文件（需已含文字层）</span>
+                        <div class="file-row">
+                            <button class="file-button" type="button" onclick="document.getElementById('reflowFile').click()">选择文件</button>
+                            <input type="file" id="reflowFile" accept=".pdf" onchange="handleFileSelect(event, 'reflow')">
+                            <span class="file-info" id="reflowFileInfo">未选择文件</span>
+                        </div>
+                        <p class="hint">自动检测每页的列数（单列 / 双列 / 多列词汇表），按正确阅读顺序重排为一列。纯图片 PDF 请先用「OCR 转换」。</p>
+                    </div>
+
+                    <div>
+                        <span class="label">页码范围（可选，留空=全文）</span>
+                        <div class="page-grid">
+                            <div>
+                                <label for="reflowStart">起始页</label>
+                                <input type="number" id="reflowStart" min="1" step="1" placeholder="留空=第 1 页" oninput="syncReflowButton()">
+                            </div>
+                            <div>
+                                <label for="reflowEnd">结束页</label>
+                                <input type="number" id="reflowEnd" min="1" step="1" placeholder="留空=最后一页" oninput="syncReflowButton()">
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <button class="primary-button" id="reflowButton" type="button" onclick="startReflow()" disabled>开始整理</button>
+
+                <div class="preview-section" id="reflowPreview">
+                    <div class="preview-head">
+                        <span class="label">整理结果预览</span>
+                        <a class="download-link" id="reflowDownload" href="#">下载 .txt</a>
+                    </div>
+                    <pre class="preview-text" id="reflowText"></pre>
+                </div>
+            </div>
+
+            <div class="status-section">
+                <div class="status" id="status">等待操作</div>
+                <div class="output-path" id="outputPath"></div>
+            </div>
+        </section>
+    </main>
 
     <script>
-        let selectedFile = null;
+        const files = {
+            ocr: null,
+            extract: null,
+            reflow: null
+        };
 
-        function handleFileSelect(event) {
-            const file = event.target.files[0];
-            if (file) {
-                if (!file.name.toLowerCase().endsWith('.pdf')) {
-                    showStatus('请选择 PDF 文件', 'error');
-                    return;
-                }
-                selectedFile = file;
-                const sizeMB = (file.size / (1024 * 1024)).toFixed(2);
-                document.getElementById('fileInfo').textContent = `${file.name} (${sizeMB} MB)`;
-                document.getElementById('convertBtn').disabled = false;
-                showStatus('准备就绪', '');
-            }
+        const MODES = ['ocr', 'extract', 'reflow'];
+
+        function switchMode(mode) {
+            MODES.forEach((m) => {
+                const active = m === mode;
+                document.getElementById(`${m}Tab`).classList.toggle('active', active);
+                document.getElementById(`${m}Pane`).classList.toggle('active', active);
+            });
+            clearStatus();
         }
 
-        function startConversion() {
-            if (!selectedFile) {
-                showStatus('请先选择文件', 'error');
+        function handleFileSelect(event, mode) {
+            const file = event.target.files[0];
+            if (!file) {
+                return;
+            }
+
+            if (!file.name.toLowerCase().endsWith('.pdf')) {
+                showStatus('请选择 PDF 文件', 'error');
+                return;
+            }
+
+            files[mode] = file;
+            const sizeMB = (file.size / (1024 * 1024)).toFixed(2);
+            document.getElementById(`${mode}FileInfo`).textContent = `${file.name} (${sizeMB} MB)`;
+
+            if (mode === 'ocr') {
+                document.getElementById('ocrButton').disabled = false;
+            } else if (mode === 'extract') {
+                syncExtractButton();
+            } else {
+                syncReflowButton();
+            }
+
+            showStatus('文件已就绪', '');
+        }
+
+        function syncExtractButton() {
+            const startPage = Number(document.getElementById('startPage').value);
+            const endPage = Number(document.getElementById('endPage').value);
+            const validPages = Number.isInteger(startPage) && Number.isInteger(endPage) && startPage >= 1 && endPage >= startPage;
+            document.getElementById('extractButton').disabled = !(files.extract && validPages);
+        }
+
+        function startOcr() {
+            if (!files.ocr) {
+                showStatus('请先选择 PDF 文件', 'error');
                 return;
             }
 
             const formData = new FormData();
-            formData.append('file', selectedFile);
+            formData.append('file', files.ocr);
+            submitForm('/api/convert', formData, 'ocrButton', '正在转换...');
+        }
 
-            document.getElementById('convertBtn').disabled = true;
-            showStatus('正在转换...', '');
+        function startExtract() {
+            if (!files.extract) {
+                showStatus('请先选择 PDF 文件', 'error');
+                return;
+            }
 
-            fetch('/api/convert', {
+            const startPage = document.getElementById('startPage').value;
+            const endPage = document.getElementById('endPage').value;
+            const formData = new FormData();
+            formData.append('file', files.extract);
+            formData.append('start_page', startPage);
+            formData.append('end_page', endPage);
+            submitForm('/api/extract-pages', formData, 'extractButton', '正在截取...');
+        }
+
+        function syncReflowButton() {
+            const startVal = document.getElementById('reflowStart').value;
+            const endVal = document.getElementById('reflowEnd').value;
+            const startPage = startVal === '' ? null : Number(startVal);
+            const endPage = endVal === '' ? null : Number(endVal);
+            const pagesOk = (startPage === null || (Number.isInteger(startPage) && startPage >= 1))
+                && (endPage === null || (Number.isInteger(endPage) && endPage >= 1))
+                && (startPage === null || endPage === null || endPage >= startPage);
+            document.getElementById('reflowButton').disabled = !(files.reflow && pagesOk);
+        }
+
+        function startReflow() {
+            if (!files.reflow) {
+                showStatus('请先选择 PDF 文件', 'error');
+                return;
+            }
+
+            const button = document.getElementById('reflowButton');
+            button.disabled = true;
+            showStatus('正在整理...', '');
+
+            const formData = new FormData();
+            formData.append('file', files.reflow);
+            const startVal = document.getElementById('reflowStart').value;
+            const endVal = document.getElementById('reflowEnd').value;
+            if (startVal !== '') formData.append('start_page', startVal);
+            if (endVal !== '') formData.append('end_page', endVal);
+
+            hideReflowPreview();
+
+            fetch('/api/reflow', { method: 'POST', body: formData })
+                .then(async (response) => {
+                    let data;
+                    try {
+                        data = await response.json();
+                    } catch (error) {
+                        data = {
+                            status: 'error',
+                            message: response.ok ? '响应解析失败' : `请求失败（HTTP ${response.status}）`,
+                            error: ''
+                        };
+                    }
+                    if (!response.ok && data.status !== 'error') {
+                        data.status = 'error';
+                    }
+                    return data;
+                })
+                .then((data) => {
+                    if (data.status === 'success') {
+                        const note = data.truncated ? '（预览已截断，完整内容见下载文件）' : '';
+                        showStatus(`整理成功，共 ${data.page_count} 页${note}`, 'success');
+                        document.getElementById('outputPath').textContent = `输出：${data.output_path}`;
+                        showReflowPreview(data.output_path, data.text);
+                    } else {
+                        showStatus(data.message, 'error');
+                        document.getElementById('outputPath').textContent = data.error || '';
+                    }
+                })
+                .catch((error) => {
+                    showStatus('网络错误', 'error');
+                    document.getElementById('outputPath').textContent = error.message;
+                })
+                .finally(() => {
+                    syncReflowButton();
+                });
+        }
+
+        function showReflowPreview(outputPath, text) {
+            document.getElementById('reflowDownload').href = `/download/${encodeURIComponent(outputPath.replace(/^coverdPDF\//, ''))}`;
+            document.getElementById('reflowText').textContent = text || '(无文字)';
+            document.getElementById('reflowPreview').classList.add('visible');
+        }
+
+        function hideReflowPreview() {
+            document.getElementById('reflowPreview').classList.remove('visible');
+            document.getElementById('reflowText').textContent = '';
+        }
+
+        function submitForm(url, formData, buttonId, pendingMessage) {
+            const button = document.getElementById(buttonId);
+            button.disabled = true;
+            showStatus(pendingMessage, '');
+
+            fetch(url, {
                 method: 'POST',
                 body: formData
             })
-            .then(response => response.json())
-            .then(data => {
-                if (data.status === 'success') {
-                    showStatus('✓ 转换完成！', 'success');
-                    document.getElementById('outputPath').textContent = `输出: ${data.output_path}`;
-                } else {
-                    showStatus(`✗ 转换失败: ${data.message}`, 'error');
-                    if (data.error) {
-                        document.getElementById('outputPath').textContent = data.error;
+                .then(async response => {
+                    let data;
+                    try {
+                        data = await response.json();
+                    } catch (error) {
+                        data = {
+                            status: 'error',
+                            message: response.ok ? '响应解析失败' : `请求失败（HTTP ${response.status}）`,
+                            error: ''
+                        };
                     }
-                }
-            })
-            .catch(error => {
-                showStatus('网络错误', 'error');
-                console.error('Error:', error);
-            })
-            .finally(() => {
-                document.getElementById('convertBtn').disabled = false;
-            });
+
+                    if (!response.ok && data.status !== 'error') {
+                        data.status = 'error';
+                    }
+
+                    return data;
+                })
+                .then(data => {
+                    if (data.status === 'success') {
+                        showStatus(data.message, 'success');
+                        document.getElementById('outputPath').textContent = `输出：${data.output_path}`;
+                    } else {
+                        showStatus(data.message, 'error');
+                        document.getElementById('outputPath').textContent = data.error || '';
+                    }
+                })
+                .catch(error => {
+                    showStatus('网络错误', 'error');
+                    document.getElementById('outputPath').textContent = error.message;
+                })
+                .finally(() => {
+                    if (buttonId === 'extractButton') {
+                        syncExtractButton();
+                    } else {
+                        button.disabled = false;
+                    }
+                });
         }
 
         function showStatus(message, type) {
             const statusEl = document.getElementById('status');
             statusEl.textContent = message;
-            statusEl.className = 'status ' + type;
+            statusEl.className = `status ${type}`;
+        }
+
+        function clearStatus() {
+            showStatus('等待操作', '');
+            document.getElementById('outputPath').textContent = '';
+            hideReflowPreview();
         }
     </script>
 </body>

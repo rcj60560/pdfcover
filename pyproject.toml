@@ -11,6 +11,7 @@ requires-python = ">=3.10"
 dependencies = [
     "flask>=3.0",
     "ocrmypdf>=14.0",
+    "pdfminer.six>=20220319",
     "pypdf>=3.0",
 ]
 
@@ -20,8 +21,11 @@ dev = [
     "pytest-mock>=3.10",
 ]
 
-[tool.setuptools]
-packages = ["pdfcover"]
+[tool.setuptools.packages.find]
+include = ["pdfcover*"]
+
+[tool.setuptools.package-data]
+"pdfcover.web" = ["templates/*.html"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
