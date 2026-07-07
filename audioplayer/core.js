@@ -92,14 +92,11 @@ export function renderBookCard(name, count) {
 }
 
 export function renderTrackRow(name, index, isCurrent) {
-  const num = parseInt(name, 10);
-  const label = Number.isFinite(num) ? String(num).padStart(3, "0") : esc(name);
+  const m = String(name).match(/(\d+)/);
+  const label = m ? m[1] : name;
   return (
-    `<li class="track${isCurrent ? " is-current" : ""}" data-file="${esc(name)}" data-index="${index}">` +
+    `<li class="track${isCurrent ? " is-current" : ""}" data-file="${esc(name)}" data-index="${index}" title="${esc(name)}">` +
     `<span class="track-num">${esc(label)}</span>` +
-    `<span class="track-name">${esc(name)}</span>` +
-    `<span class="track-dur"></span>` +
-    `<span class="track-ind"></span>` +
     `</li>`
   );
 }
