@@ -22,8 +22,8 @@ pytest audioplayer/tests/test_dev_server.py -v       # dev_server autoindex 格�
 
 ## 目录结构
 
-- `index.html / app.js / style.css` —— 上线要传的 3 个文件
-- `core.js` —— 纯逻辑（解析/排序/循环/倍速/渲染），单测覆盖
+- `index.html / app.js / style.css / core.js` —— 上线要传的 4 个文件（app.js 通过 `import` 加载 core.js，二者都要传）
+- `core.js` —— 纯逻辑（解析/排序/循环/倍速/渲染），单测覆盖；既是开发文件也要上线
 - `books/` —— 音频根目录（上线后由你创建并放书）
 - `fixtures/` —— 本地测试假数据（不上线）
 - `dev_server.py` —— 本地开发服务器（不上线）
@@ -31,22 +31,23 @@ pytest audioplayer/tests/test_dev_server.py -v       # dev_server autoindex 格�
 
 ## 部署到服务器（公网 47.108.230.162）
 
-1. **上传 3 个前端文件**到 nginx 静态根下的某个目录（设为 `<script根>`）：
+1. **上传 4 个前端文件**到 nginx 静态根下的目录（本服务器为 `/www/wwwroot/47.108.230.162/script/`）：
 
    ```bash
-   scp index.html app.js style.css root@47.108.230.162:<script根>/
+   scp index.html app.js style.css core.js root@47.108.230.162:/www/wwwroot/47.108.230.162/script/
    ```
 
 2. **创建音频根目录并放书**：
 
    ```bash
-   ssh root@47.108.230.162 'mkdir -p <script根>/books'
-   scp -r 剑桥雅思10 root@47.108.230.162:<script根>/books/
+   ssh root@47.108.230.162 'mkdir -p /www/wwwroot/47.108.230.162/script/books'
+   scp -r 剑桥雅思10 root@47.108.230.162:/www/wwwroot/47.108.230.162/script/books/
+   ssh root@47.108.230.162 'chown -R www:www /www/wwwroot/47.108.230.162/script'
    ```
 
    每本书一个文件夹，里面是 `001.mp3`、`002.mp3`… 命名规律即可。
 
-3. **配 nginx**：把 `nginx.conf.example` 里的 `/path/to/script-root/` 改成 `<script根>` 的实际路径，加进现有 `server { }` 块，然后：
+3. **配 nginx**：本服务器是宝塔面板，站点 vhost 在 `/www/server/panel/vhost/nginx/47.108.230.162.conf`，其 server 块已 `include /www/server/panel/vhost/nginx/extension/47.108.230.162/*.conf;`。把 `nginx.conf.example` 里的 location（alias 改成本机实际路径）放到 `/www/server/panel/vhost/nginx/extension/47.108.230.162/audioplayer.conf`，然后：
 
    ```bash
    ssh root@47.108.230.162 'nginx -t && nginx -s reload'
@@ -57,7 +58,8 @@ pytest audioplayer/tests/test_dev_server.py -v       # dev_server autoindex 格�
 ## 加一本书
 
 ```bash
-scp -r 新书名 root@47.108.230.162:<script根>/books/
+scp -r 新书名 root@47.108.230.162:/www/wwwroot/47.108.230.162/script/books/
+ssh root@47.108.230.162 'chown -R www:www /www/wwwroot/47.108.230.162/script/books'
 ```
 
 刷新网页，新卡片自动出现。无需任何命令或脚本。
