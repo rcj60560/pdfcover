@@ -1,0 +1,8 @@
+{
+  "name": "pdfcover-audioplayer",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "node --test tests/"
+  }
+}
