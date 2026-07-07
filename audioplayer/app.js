@@ -63,6 +63,7 @@ async function loadHome() {
       msg.hidden = false;
     }
   } catch (e) {
+    console.error("loadHome failed:", e);
     msg.textContent = "加载失败，请检查服务或 nginx 配置";
     msg.hidden = false;
   }
@@ -74,7 +75,8 @@ async function openBook(name) {
     try {
       const tracks = sortTracks(parseTracks(await fetchJson(BOOKS + encodeURIComponent(name) + "/")));
       if (tracks.length) state.books.push({ name, tracks });
-    } catch (_) {
+    } catch (e) {
+      console.error("openBook failed:", e);
       /* ignore */
     }
   }
@@ -152,6 +154,7 @@ function updateLoopButton() {
 }
 
 function bind() {
+  let scrubbing = false;
   $("back-btn").addEventListener("click", showHome);
 
   $("book-grid").addEventListener("click", (e) => {
@@ -196,13 +199,15 @@ function bind() {
     $("mute").textContent = audio.muted ? "🔇" : "🔊";
   });
 
+  $("seek").addEventListener("pointerdown", () => { scrubbing = true; });
+  $("seek").addEventListener("pointerup", () => { scrubbing = false; });
   $("seek").addEventListener("input", () => {
     if (audio.duration) audio.currentTime = ($("seek").value / 1000) * audio.duration;
   });
 
   audio.addEventListener("timeupdate", () => {
     $("cur-time").textContent = formatTime(audio.currentTime);
-    if (audio.duration) $("seek").value = (audio.currentTime / audio.duration) * 1000;
+    if (audio.duration && !scrubbing) $("seek").value = (audio.currentTime / audio.duration) * 1000;
   });
   audio.addEventListener("loadedmetadata", () => {
     $("dur-time").textContent = formatTime(audio.duration);
@@ -213,10 +218,15 @@ function bind() {
   audio.addEventListener("error", () => {
     const row = document.querySelector(`.track[data-index="${state.currentIndex}"]`);
     if (row) row.classList.add("is-broken");
-    gotoNext(); // 自动跳下一首；多首连续损坏会逐个标红直到停止/正常
+    const b = currentBook();
+    if (!b) return;
+    // 跳过损坏的源；绝不重播刚出错的源，避免 loop=one/all 下死循环
+    if (state.currentIndex < b.tracks.length - 1) playIndex(state.currentIndex + 1);
+    else audio.pause();
   });
 }
 
 bind();
 showHome();
 loadHome();
+updateLoopButton();
