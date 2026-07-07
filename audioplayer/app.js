@@ -1,6 +1,7 @@
 // audioplayer/app.js
 import {
   parseBooks, parseTracks, sortTracks,
+  cycleLoop, cycleSpeed, nextTrack, clampSeek, formatTime,
   renderBookCard, renderTrackRow,
 } from "./core.js";
 
@@ -98,7 +99,58 @@ function renderTracks() {
     .join("");
 }
 
-/* ---------- 事件（播放相关在 Task 5 接入；本任务先绑导航与选曲占位）---------- */
+/* ---------- 播放 ---------- */
+function trackUrl(book, file) {
+  return BOOKS + encodeURIComponent(book) + "/" + encodeURIComponent(file);
+}
+
+function playIndex(i) {
+  const b = currentBook();
+  if (!b || i < 0 || i >= b.tracks.length) return;
+  state.currentIndex = i;
+  audio.src = trackUrl(b.name, b.tracks[i]);
+  audio.playbackRate = state.speed;
+  audio.load();
+  audio.play().catch(() => {}); // 加载失败的兜底在 'error' 事件处理（Task 6）
+  $("player").hidden = false;
+  updateNowPlaying();
+  renderTracks();
+}
+
+function updateNowPlaying() {
+  const b = currentBook();
+  if (!b || state.currentIndex < 0) return;
+  $("now-title").textContent = b.tracks[state.currentIndex] + " · " + b.name;
+}
+
+function togglePlay() {
+  const b = currentBook();
+  if (!audio.src) {
+    if (b && b.tracks.length) playIndex(state.currentIndex < 0 ? 0 : state.currentIndex);
+    return;
+  }
+  if (audio.paused) audio.play().catch(() => {});
+  else audio.pause();
+}
+
+function gotoNext() {
+  const b = currentBook();
+  if (!b) return;
+  const n = nextTrack(state.currentIndex, b.tracks.length, state.loop);
+  if (n === null) {
+    audio.pause();
+    return;
+  }
+  playIndex(n);
+}
+
+function updateLoopButton() {
+  const btn = $("loop");
+  btn.textContent = state.loop === "one" ? "🔂" : "🔁";
+  btn.classList.toggle("active", state.loop !== "off");
+  btn.title = "循环：" + (state.loop === "off" ? "关" : state.loop === "one" ? "单曲" : "整本");
+}
+
 function bind() {
   $("back-btn").addEventListener("click", showHome);
 
@@ -111,10 +163,54 @@ function bind() {
   $("track-list").addEventListener("click", (e) => {
     const row = e.target.closest(".track");
     if (!row) return;
-    // 播放逻辑在 Task 5；这里先标记选中行，便于本任务验证
-    state.currentIndex = Number(row.dataset.index);
-    renderTracks();
+    playIndex(Number(row.dataset.index));
   });
+
+  $("play").addEventListener("click", togglePlay);
+
+  $("prev").addEventListener("click", () => {
+    playIndex(Math.max(0, state.currentIndex - 1));
+  });
+  $("next").addEventListener("click", gotoNext);
+
+  $("back5").addEventListener("click", () => {
+    audio.currentTime = clampSeek(audio.currentTime - 5, audio.duration);
+  });
+  $("fwd5").addEventListener("click", () => {
+    audio.currentTime = clampSeek(audio.currentTime + 5, audio.duration);
+  });
+
+  $("loop").addEventListener("click", () => {
+    state.loop = cycleLoop(state.loop);
+    updateLoopButton();
+  });
+
+  $("speed").addEventListener("click", () => {
+    state.speed = cycleSpeed(state.speed);
+    audio.playbackRate = state.speed;
+    $("speed").textContent = state.speed + "x";
+  });
+
+  $("mute").addEventListener("click", () => {
+    audio.muted = !audio.muted;
+    $("mute").textContent = audio.muted ? "🔇" : "🔊";
+  });
+
+  $("seek").addEventListener("input", () => {
+    if (audio.duration) audio.currentTime = ($("seek").value / 1000) * audio.duration;
+  });
+
+  audio.addEventListener("timeupdate", () => {
+    $("cur-time").textContent = formatTime(audio.currentTime);
+    if (audio.duration) $("seek").value = (audio.currentTime / audio.duration) * 1000;
+  });
+  audio.addEventListener("loadedmetadata", () => {
+    $("dur-time").textContent = formatTime(audio.duration);
+  });
+  audio.addEventListener("play", () => ($("play").textContent = "⏸"));
+  audio.addEventListener("pause", () => ($("play").textContent = "▶"));
+  audio.addEventListener("ended", gotoNext);
+  // 'error' 兜底在 Task 6 接入
 }
 
 bind();
