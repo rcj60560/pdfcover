@@ -210,7 +210,11 @@ function bind() {
   audio.addEventListener("play", () => ($("play").textContent = "⏸"));
   audio.addEventListener("pause", () => ($("play").textContent = "▶"));
   audio.addEventListener("ended", gotoNext);
-  // 'error' 兜底在 Task 6 接入
+  audio.addEventListener("error", () => {
+    const row = document.querySelector(`.track[data-index="${state.currentIndex}"]`);
+    if (row) row.classList.add("is-broken");
+    gotoNext(); // 自动跳下一首；多首连续损坏会逐个标红直到停止/正常
+  });
 }
 
 bind();
