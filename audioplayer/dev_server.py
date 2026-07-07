@@ -51,16 +51,25 @@ class Handler(BaseHTTPRequestHandler):
     def do_GET(self):
         path = urlparse(self.path).path
         disk = to_disk(path)
+        is_books = path == "/books" or path.startswith("/books/")
 
-        if disk.endswith(os.sep) or path.endswith("/") or os.path.isdir(disk):
+        if is_books:
+            # 书库：目录返回 autoindex json，文件直发
             if os.path.isdir(disk):
                 self._send_json(build_autoindex(disk))
                 return
+            if os.path.isfile(disk):
+                self._send_file(disk)
+                return
+            self.send_error(404, "Not Found")
+            return
 
+        # 播放器自身："/" 或目录请求 -> index.html；其余按文件直发
+        if path == "/" or os.path.isdir(disk):
+            disk = os.path.join(BASE, "index.html")
         if os.path.isfile(disk):
             self._send_file(disk)
             return
-
         self.send_error(404, "Not Found")
 
     def _send_json(self, obj):
