@@ -42,6 +42,9 @@ htmlcov/
 *.pdf
 !tests/fixtures/*.pdf
 
+# Generated outputs (OCR'd PDFs, reflow text, etc.)
+coverdPDF/
+
 # Spec workflow
 .spec-workflow/
 

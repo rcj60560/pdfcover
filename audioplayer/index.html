@@ -1,0 +1,57 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <title>我的书库</title>
+  <link rel="stylesheet" href="style.css?v=20260714b" />
+</head>
+<body>
+  <header class="topbar">
+    <button id="back-btn" class="back" type="button" hidden>← 返回</button>
+    <h1 id="view-title">📚 我的书库</h1>
+  </header>
+
+  <main>
+    <section id="home-view">
+      <div id="book-grid" class="grid"></div>
+      <p id="home-msg" class="msg" hidden></p>
+    </section>
+
+    <section id="detail-view" hidden>
+      <ul id="track-list" class="tracks"></ul>
+      <p id="detail-msg" class="msg" hidden></p>
+    </section>
+  </main>
+
+  <footer id="player" class="player" hidden>
+    <div class="player-info"><span id="now-title">—</span></div>
+    <div class="player-progress">
+      <span id="cur-time" class="t">0:00</span>
+      <input id="seek" type="range" min="0" max="1000" value="0" />
+      <span id="dur-time" class="t">0:00</span>
+    </div>
+    <div class="player-controls">
+      <div class="pc-row pc-main">
+        <button id="prev" type="button" title="上一首">⏮</button>
+        <button id="play" type="button" title="播放/暂停">▶</button>
+        <button id="next" type="button" title="下一首">⏭</button>
+      </div>
+      <div class="pc-row pc-sub">
+        <span class="pc-grp">
+          <button id="back5" type="button" title="后退5秒">«5s</button>
+          <button id="fwd5" type="button" title="快进5秒">5s»</button>
+        </span>
+        <span class="pc-grp">
+          <button id="loop" type="button" title="循环">🔁</button>
+          <button id="speed" type="button" title="倍速">1x</button>
+          <button id="mute" type="button" title="静音">🔊</button>
+        </span>
+      </div>
+    </div>
+  </footer>
+
+  <audio id="audio" preload="metadata"></audio>
+  <script type="module" src="app.js?v=20260714b"></script>
+</body>
+</html>

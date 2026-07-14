@@ -1,0 +1,20 @@
+# ===== 音频播放器 nginx 配置示例 =====
+# 放进现有 server { } 块内。
+# nginx 的 location 按最长前缀匹配，本配置会覆盖当前把 /script 转发到后端的规则。
+# 把 /path/to/script-root/ 改成你服务器上存放 index.html 与 books/ 的实际目录。
+
+# 播放器页面与静态资源（不开列目录）
+location /script/ {
+    alias /path/to/script-root/;
+    autoindex off;
+}
+
+# 书库：开启 JSON 目录列表，播放器靠它自动发现书与音频
+location /script/books/ {
+    alias /path/to/script-root/books/;
+    autoindex on;
+    autoindex_format json;
+}
+
+# 改完测试并重载：
+#   nginx -t && nginx -s reload

@@ -21,7 +21,7 @@ def test_output_dir_config():
 def test_max_content_length():
     """Test that max content length is set."""
     app = create_app()
-    assert app.config['MAX_CONTENT_LENGTH'] == 100 * 1024 * 1024
+    assert app.config['MAX_CONTENT_LENGTH'] == 2 * 1024 * 1024 * 1024
 
 
 def test_root_route():
