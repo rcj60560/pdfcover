@@ -10,7 +10,17 @@ const CARD_COLORS = [
 
 export function parseBooks(entries) {
   if (!Array.isArray(entries)) return [];
-  return entries.filter((e) => e && e.type === "directory").map((e) => e.name);
+  return entries
+    .filter((e) => e && e.type === "directory")
+    .map((e) => e.name)
+    .sort((a, b) => {
+      const aNumber = Number(String(a).match(/\d+/)?.[0]);
+      const bNumber = Number(String(b).match(/\d+/)?.[0]);
+      if (Number.isFinite(aNumber) && Number.isFinite(bNumber) && aNumber !== bNumber) {
+        return aNumber - bNumber;
+      }
+      return String(a).localeCompare(String(b), "zh-CN");
+    });
 }
 
 export function parseTracks(entries) {
@@ -79,7 +89,7 @@ function colorFor(name) {
 }
 
 export function renderBookCard(name, count) {
-  const first = [...String(name)][0] || "?";
+  const first = String(name).match(/\d+/)?.[0] || [...String(name)][0] || "?";
   const color = colorFor(String(name));
   const countLabel = Number.isFinite(count) ? `${count}集` : "";
   return (
@@ -92,8 +102,11 @@ export function renderBookCard(name, count) {
 }
 
 export function renderTrackRow(name, index, isCurrent) {
-  const m = String(name).match(/(\d+)/);
-  const label = m ? m[1] : name;
+  const normalized = String(name).match(/^T(\d+)(?:-P(\d+))?\.mp3$/i);
+  const fallback = String(name).match(/(\d+)/);
+  const label = normalized
+    ? `Test ${Number(normalized[1])}${normalized[2] ? ` · Part ${Number(normalized[2])}` : ""}`
+    : fallback ? fallback[1] : name;
   return (
     `<li class="track${isCurrent ? " is-current" : ""}" data-file="${esc(name)}" data-index="${index}" title="${esc(name)}">` +
     `<span class="track-num">${esc(label)}</span>` +

@@ -17,7 +17,9 @@ from http.server import BaseHTTPRequestHandler, HTTPServer
 from urllib.parse import unquote, urlparse
 
 BASE = os.path.dirname(os.path.abspath(__file__))
-BOOKS_DIR = os.path.join(BASE, "fixtures", "books")
+REAL_BOOKS_DIR = os.path.join(BASE, "books")
+FIXTURE_BOOKS_DIR = os.path.join(BASE, "fixtures", "books")
+BOOKS_DIR = REAL_BOOKS_DIR if os.path.isdir(REAL_BOOKS_DIR) else FIXTURE_BOOKS_DIR
 
 
 def _entry(name, full):

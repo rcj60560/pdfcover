@@ -20,6 +20,15 @@ test("parseBooks tolerates non-array", () => {
   assert.deepEqual(parseBooks(undefined), []);
 });
 
+test("parseBooks sorts IELTS issues numerically", () => {
+  const entries = [
+    { name: "剑桥雅思19", type: "directory" },
+    { name: "剑桥雅思2", type: "directory" },
+    { name: "剑桥雅思10", type: "directory" },
+  ];
+  assert.deepEqual(parseBooks(entries), ["剑桥雅思2", "剑桥雅思10", "剑桥雅思19"]);
+});
+
 test("parseTracks keeps mp3 files only (case-insensitive)", () => {
   const entries = [
     { name: "001.mp3", type: "file" },
@@ -101,6 +110,11 @@ test("renderTrackRow marks current only when asked", () => {
   assert.doesNotMatch(renderTrackRow("001.mp3", 0, false), /is-current/);
   assert.match(renderTrackRow("002.mp3", 1, true), /is-current/);
   assert.match(renderTrackRow("002.mp3", 1, true), /data-index="1"/);
+});
+
+test("renderTrackRow labels normalized test and part names", () => {
+  assert.match(renderTrackRow("T03-P04.mp3", 0, false), /Test 3 · Part 4/);
+  assert.match(renderTrackRow("T02.mp3", 0, false), /Test 2/);
 });
 
 test("renderBookCard escapes special chars", () => {
