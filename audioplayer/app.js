@@ -116,6 +116,8 @@ function playIndex(i) {
   audio.play().catch(() => {}); // 加载失败的兜底在 'error' 事件处理（Task 6）
   $("player").hidden = false;
   updateNowPlaying();
+  updateMediaMetadata();
+  updateMediaState();
   renderTracks();
 }
 
@@ -151,6 +153,49 @@ function updateLoopButton() {
   btn.textContent = state.loop === "one" ? "🔂" : "🔁";
   btn.classList.toggle("active", state.loop !== "off");
   btn.title = "循环：" + (state.loop === "off" ? "关" : state.loop === "one" ? "单曲" : "整本");
+}
+
+/* ---------- Media Session：锁屏/后台继续播放 + 系统媒体控制 ---------- */
+function setupMediaSession() {
+  if (!("mediaSession" in navigator)) return;
+  const ms = navigator.mediaSession;
+  const safe = (action, fn) => { try { ms.setActionHandler(action, fn); } catch (_) { /* 该 action 不支持时忽略 */ } };
+  safe("play", () => audio.play().catch(() => {}));
+  safe("pause", () => audio.pause());
+  safe("previoustrack", () => playIndex(Math.max(0, state.currentIndex - 1)));
+  safe("nexttrack", () => gotoNext());
+  safe("seekbackward", () => { audio.currentTime = clampSeek(audio.currentTime - 10, audio.duration); });
+  safe("seekforward", () => { audio.currentTime = clampSeek(audio.currentTime + 10, audio.duration); });
+}
+
+function updateMediaMetadata() {
+  if (!("mediaSession" in navigator)) return;
+  const b = currentBook();
+  if (!b || state.currentIndex < 0) return;
+  const file = b.tracks[state.currentIndex];
+  const m = String(file).match(/^T(\d+)(?:-P(\d+))?\.mp3$/i);
+  const title = m ? `Test ${Number(m[1])}${m[2] ? ` · Part ${Number(m[2])}` : ""}` : file;
+  try {
+    navigator.mediaSession.metadata = new MediaMetadata({ title, artist: b.name, album: "雅思听力" });
+  } catch (_) { /* MediaMetadata 不可用时忽略 */ }
+}
+
+function updateMediaState() {
+  if (!("mediaSession" in navigator)) return;
+  navigator.mediaSession.playbackState = audio.paused ? "paused" : "playing";
+}
+
+function updateMediaPosition() {
+  if (!("mediaSession" in navigator)) return;
+  const d = audio.duration;
+  if (!Number.isFinite(d) || d <= 0) return;
+  try {
+    navigator.mediaSession.setPositionState({
+      duration: d,
+      position: Math.min(audio.currentTime, d),
+      playbackRate: audio.playbackRate || 1,
+    });
+  } catch (_) { /* 无效值时忽略 */ }
 }
 
 function bind() {
@@ -208,12 +253,14 @@ function bind() {
   audio.addEventListener("timeupdate", () => {
     $("cur-time").textContent = formatTime(audio.currentTime);
     if (audio.duration && !scrubbing) $("seek").value = (audio.currentTime / audio.duration) * 1000;
+    updateMediaPosition();
   });
   audio.addEventListener("loadedmetadata", () => {
     $("dur-time").textContent = formatTime(audio.duration);
+    updateMediaPosition();
   });
-  audio.addEventListener("play", () => ($("play").textContent = "⏸"));
-  audio.addEventListener("pause", () => ($("play").textContent = "▶"));
+  audio.addEventListener("play", () => { $("play").textContent = "⏸"; updateMediaState(); updateMediaPosition(); });
+  audio.addEventListener("pause", () => { $("play").textContent = "▶"; updateMediaState(); });
   audio.addEventListener("ended", gotoNext);
   audio.addEventListener("error", () => {
     const row = document.querySelector(`.track[data-index="${state.currentIndex}"]`);
@@ -227,6 +274,7 @@ function bind() {
 }
 
 bind();
+setupMediaSession();
 showHome();
 loadHome();
 updateLoopButton();
