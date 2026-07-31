@@ -1,0 +1,12 @@
+name = "音频播放器"
+desc = "IELTS / Collins / 新概念 听力音频播放器（本地预览；线上见链接）"
+category = "英语"
+status = "ready"
+
+[run]
+cmd = ["python", "dev_server.py"]
+port = 8000
+url = "http://127.0.0.1:8000"
+
+[links]
+live = "http://47.108.230.162/script/"

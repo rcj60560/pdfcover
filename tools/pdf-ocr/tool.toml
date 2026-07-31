@@ -1,0 +1,12 @@
+name = "PDF 影印→可搜索 OCR"
+desc = "扫描版 PDF 用 OCR 转成可搜索、可选中文字的 PDF（Tesseract）"
+category = "文档"
+status = "ready"
+
+[run]
+cmd = ["python", "-m", "pdfcover.web"]
+port = 5000
+url = "http://127.0.0.1:5000"
+
+[links]
+live = ""

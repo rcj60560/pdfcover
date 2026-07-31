@@ -1,0 +1,4 @@
+name = "Word→Markdown"
+desc = "Word 文档转 Markdown（占位，待实现）"
+category = "文档"
+status = "planned"
