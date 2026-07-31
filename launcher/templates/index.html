@@ -1,0 +1,71 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>my-toolkit</title>
+  <style>
+    body { font-family: -apple-system, "PingFang SC", "Microsoft YaHei", sans-serif;
+           background: #f5f5f7; margin: 0; padding: 24px; color: #1d1d1f; }
+    h1 { font-size: 22px; margin: 0 0 4px; }
+    .sub { color: #86868b; margin: 0 0 20px; }
+    .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 16px; }
+    .card { background: #fff; border: 1px solid #eee; border-radius: 14px; padding: 16px; }
+    .cat { font-size: 12px; color: #86868b; }
+    .name { font-size: 17px; font-weight: 600; margin: 4px 0; }
+    .desc { font-size: 13px; color: #555; min-height: 36px; }
+    .row { display: flex; gap: 8px; margin-top: 12px; flex-wrap: wrap; align-items: center; }
+    button { border: 1px solid #d2d2d7; background: #fff; border-radius: 10px;
+             padding: 8px 14px; font-size: 14px; cursor: pointer; }
+    button.primary { background: #3b82f6; color: #fff; border-color: #3b82f6; }
+    button:disabled { opacity: .5; cursor: default; }
+    .badge { font-size: 12px; padding: 2px 8px; border-radius: 8px; background: #e8f5e9; color: #2e7d32; }
+    .badge.off { background: #f0f0f0; color: #86868b; }
+    .badge.plan { background: #fff3e0; color: #ef6c00; }
+    a { color: #3b82f6; text-decoration: none; font-size: 14px; }
+    .planned { opacity: .6; }
+  </style>
+</head>
+<body>
+  <h1>🧰 my-toolkit</h1>
+  <p class="sub">个人本地工具箱 · 点「启动」即拉起并在新页签打开</p>
+  <div class="grid">
+    {% for t in tools %}
+    <div class="card {{ '' if t.status == 'ready' else 'planned' }}">
+      <div class="cat">{{ t.category or '未分类' }}</div>
+      <div class="name">{{ t.name }}</div>
+      <div class="desc">{{ t.desc }}</div>
+      {% if t.status != 'ready' %}
+        <div class="row"><span class="badge plan">敬请期待</span></div>
+      {% else %}
+      <div class="row">
+        <span class="badge {{ '' if statuses[t.slug] else 'off' }}" id="st-{{ t.slug }}">
+          {{ '运行中' if statuses[t.slug] else '已停止' }}
+        </span>
+      </div>
+      <div class="row">
+        <button class="primary" onclick="launch('{{ t.slug }}','{{ t.url }}')">启动</button>
+        <button onclick="stop('{{ t.slug }}')">停止</button>
+        <a target="_blank" href="{{ t.url }}">打开</a>
+        {% if t.live %}<a target="_blank" href="{{ t.live }}">线上</a>{% endif %}
+      </div>
+      {% endif %}
+    </div>
+    {% endfor %}
+  </div>
+<script>
+async function launch(slug, url){
+  const b = event.target; b.disabled = true; b.textContent = '启动中…';
+  try { await fetch('/launch/'+slug,{method:'POST'}); } finally { b.disabled = false; b.textContent = '启动'; }
+  window.open(url, '_blank');
+  refresh(slug);
+}
+async function stop(slug){ await fetch('/stop/'+slug,{method:'POST'}); refresh(slug); }
+async function refresh(slug){
+  const r = await fetch('/status/'+slug); const j = await r.json();
+  const el = document.getElementById('st-'+slug);
+  if(el){ el.textContent = j.running ? '运行中' : '已停止'; el.className = 'badge ' + (j.running ? '' : 'off'); }
+}
+</script>
+</body>
+</html>
