@@ -1,0 +1,19 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "my-toolkit-launcher"
+version = "0.1.0"
+description = "个人本地工具箱总入口面板"
+requires-python = ">=3.10"
+dependencies = [
+    "flask>=3.0",
+    "tomli>=2.0; python_version < '3.11'",
+]
+
+[tool.setuptools.packages.find]
+include = ["launcher*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
