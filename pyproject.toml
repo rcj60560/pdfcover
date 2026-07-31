@@ -1,34 +1,19 @@
 [build-system]
-requires = ["setuptools>=68.0", "wheel"]
+requires = ["setuptools>=68"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "pdfcover"
+name = "my-toolkit-launcher"
 version = "0.1.0"
-description = "Convert scanned PDFs to searchable PDFs with OCR"
-readme = "README.md"
+description = "个人本地工具箱总入口面板"
 requires-python = ">=3.10"
 dependencies = [
     "flask>=3.0",
-    "ocrmypdf>=14.0",
-    "pdfminer.six>=20220319",
-    "pypdf>=3.0",
-]
-
-[project.optional-dependencies]
-dev = [
-    "pytest>=7.0",
-    "pytest-mock>=3.10",
+    "tomli>=2.0; python_version < '3.11'",
 ]
 
 [tool.setuptools.packages.find]
-include = ["pdfcover*"]
-
-[tool.setuptools.package-data]
-"pdfcover.web" = ["templates/*.html"]
+include = ["launcher*"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
-python_files = ["test_*.py"]
-python_classes = ["Test*"]
-python_functions = ["test_*"]

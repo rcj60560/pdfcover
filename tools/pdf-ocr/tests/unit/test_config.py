@@ -10,4 +10,4 @@ def test_ocr_config_is_immutable():
 
 
 def test_default_output_suffix():
-    assert DEFAULT_OUTPUT_SUFFIX == "_ocr"
+    assert DEFAULT_OUTPUT_SUFFIX == "+OCR"  # 与实际输出文件名一致（如 19A+OCR.pdf）

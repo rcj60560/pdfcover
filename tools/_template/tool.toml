@@ -1,0 +1,13 @@
+# 复制本目录 → 改这个文件 → 丢代码进去，即可加新工具（面板自动发现）。
+name = "新工具"
+desc = "一句话简介"
+category = "分类"
+status = "ready"
+
+[run]
+cmd = ["python", "main.py"]
+port = 0
+url = "http://127.0.0.1:0"
+
+[links]
+live = ""
