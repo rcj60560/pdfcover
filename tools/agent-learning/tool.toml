@@ -1,0 +1,12 @@
+name = "Agent 学习路线"
+desc = "零基础转 Agent 开发的学习地图：概念词汇 + 分阶段路线 + 精选仓库 + 本地跟练代码"
+category = "学习"
+status = "ready"
+
+[run]
+cmd = ["python", "dev_server.py"]
+port = 7000
+url = "http://127.0.0.1:7000"
+
+[links]
+live = ""
