@@ -50,4 +50,10 @@ def main(dry_run: bool = False, push: bool = False) -> None:
 
 
 if __name__ == "__main__":
-    main()
+    import argparse
+
+    parser = argparse.ArgumentParser(description="校验并发布 BWF JSON 到羽圈 App 仓库")
+    parser.add_argument("--dry-run", action="store_true", help="只复制到 App 仓库，不执行 git 提交")
+    parser.add_argument("--push", action="store_true", help="commit 后推送到远端（无网/凭据问题不中断）")
+    args = parser.parse_args()
+    main(dry_run=args.dry_run, push=args.push)
