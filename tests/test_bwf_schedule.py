@@ -40,6 +40,7 @@ def test_parse_filters_and_sorts():
     assert worlds["startDate"] == "2026-08-17"
     assert worlds["code"] == "B671FB97-491C-46D3-982F-56525168C3AA"
     assert worlds["hasLiveScores"] is True
+    assert worlds["tmtId"] == 5601  # 详情 h2h API 需要数字赛事 id（UUID 会 500）
     # 旧字段缺 code/has_live_scores 时回退 null/False（向后兼容）
     assert data["tournaments"][0]["code"] is None
     assert data["tournaments"][0]["hasLiveScores"] is False
