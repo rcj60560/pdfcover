@@ -22,6 +22,9 @@ LEVELS = [
 
 def level_from_category(category: str) -> str:
     low = category.lower()
+    # Grade 1 顶级大赛（世锦赛/汤尤杯）→ major；Junior 级别（世青赛/青奥）仍不入列
+    if "grade 1" in low and "junior" not in low:
+        return "major"
     for needle, level in LEVELS:
         if needle.lower() in low:
             return level
@@ -34,7 +37,7 @@ def parse_schedule(payload: dict, year: int) -> dict:
         for t in month.get("tournaments", []):
             level = level_from_category(t.get("category", ""))
             if level == "other":
-                continue  # v0 只收 World Tour 级别（spec §2）
+                continue  # 只收 World Tour + Grade 1 大赛（spec §2，2026-08-18 扩 major）
             prize = str(t.get("prize_money", "0")).replace(",", "")
             tournaments.append({
                 "name": t["name"],
