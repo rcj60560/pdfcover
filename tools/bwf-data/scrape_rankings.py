@@ -1,4 +1,9 @@
-"""抓取 BWF 世界排名（5 单项 × Top 50）→ out/rankings.json"""
+"""抓取 BWF 世界排名（BWF World Rankings，5 单项 × Top 50）→ out/rankings.json
+
+数据源：extranet-lv JSON API（BWF Fansite bwfbadminton.com/rankings 同源）。
+rankId=2 才是正式世界排名；2026-08-18 前误用 bwfworldtour 站 /rankings/ 页面，
+那是 HSBC Race to Guangzhou 积分榜（rankId=9），排序与积分完全不同。
+"""
 from __future__ import annotations
 
 import json
@@ -8,91 +13,95 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 import requests
-from bs4 import BeautifulSoup
 
 UA = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36"
-BASE = "https://bwfworldtour.bwfbadminton.com"
-CAT_IDS = {"ms": 57, "ws": 58, "md": 59, "wd": 60, "xd": 61}
+API = "https://extranet-lv.bwfbadminton.com/api"
+RANK_ID = 2  # 1=世青排名 2=世界排名 3=团体排名 9=Race to Guangzhou 14=残奥排名
+CAT_IDS = {"ms": 6, "ws": 7, "md": 8, "wd": 9, "xd": 10}
 DISCIPLINE_NAMES = {"ms": "男单", "ws": "女单", "md": "男双", "wd": "女双", "xd": "混双"}
 OUT = Path(__file__).parent / "out"
 
-
-def http_get(url: str, accept: str = "text/html,application/xhtml+xml") -> str:
-    """带完整 UA 的 GET；Cloudflare 拦截时退避重试（短 UA 必 403，勿改 UA）。"""
-    for attempt in range(3):
-        r = requests.get(url, headers={"User-Agent": UA, "Accept": accept}, timeout=15)
-        if r.status_code == 200 and "cloudflare" not in r.text[:2000].lower():
-            return r.text
-        time.sleep(2 ** attempt)
-    raise RuntimeError(f"fetch failed: {url}")
-
-
-def resolve_current_params() -> str:
-    """解析当前周参数串（id/cat_id/ryear/week/...），统一 page_size=50。
-
-    旧站 /rankings/ 无参 GET 返回 142B JS 跳转（document.location='...?参数'）；
-    2026-08 实测改版：直接返回整页，参数内嵌于 rankings/?<query> 链接。两种形态均兼容。
-    """
-    html = http_get(BASE + "/rankings/")
-    m = re.search(r"document\.location='([^']+)'", html)
-    if m:
-        query = m.group(1).split("?", 1)[1]
-    else:
-        m = re.search(r"rankings/\?([^\"']+)", html)
-        if not m:
-            raise RuntimeError("无法解析当前排名参数（页面结构可能已变化）")
-        query = m.group(1)
-    params = dict(pair.split("=", 1) for pair in query.split("&"))
-    params["page_size"] = "50"  # 站点默认链接 page_size=25，Top 50 需显式指定
-    return "&".join(f"{k}={v}" for k, v in params.items())
+# 国家全名 → BWF 三字码（与 BWF 站点展示一致）；未收录的回退全名，宁可长不可错
+COUNTRY_CODES = {
+    "China": "CHN", "Chinese Taipei": "TPE", "Korea": "KOR", "Japan": "JPN",
+    "Indonesia": "INA", "India": "IND", "Thailand": "THA", "Malaysia": "MAS",
+    "Denmark": "DEN", "France": "FRA", "Hong Kong China": "HKG", "Canada": "CAN",
+    "USA": "USA", "Singapore": "SIN", "Scotland": "SCO", "Turkiye": "TUR",
+    "Turkey": "TUR", "Bulgaria": "BUL", "Ukraine": "UKR", "Germany": "GER",
+    "England": "ENG", "Spain": "ESP", "Ireland": "IRL", "Belgium": "BEL",
+    "Vietnam": "VIE", "Czechia": "CZE", "Brazil": "BRA",
+    # 常见但暂未进 Top50 的国家，防未来缺口
+    "Sweden": "SWE", "Switzerland": "SUI", "Austria": "AUT", "Poland": "POL",
+    "Italy": "ITA", "Netherlands": "NED", "Australia": "AUS", "New Zealand": "NZL",
+    "Macau China": "MAC", "Philippines": "PHI", "Hungary": "HUN", "Croatia": "CRO",
+    "Slovenia": "SLO", "Serbia": "SRB", "Slovakia": "SVK", "Finland": "FIN",
+    "Norway": "NOR", "Portugal": "POR", "Greece": "GRE", "Romania": "ROU",
+    "Wales": "WAL", "Estonia": "EST", "Latvia": "LAT", "Lithuania": "LTU",
+    "Iceland": "ICE", "Israel": "ISR", "Egypt": "EGY", "South Africa": "RSA",
+    "Algeria": "ALG", "Tunisia": "TUN", "Morocco": "MAR", "Nigeria": "NGR",
+    "Ghana": "GHA", "Uganda": "UGA", "Kenya": "KEN", "Mauritius": "MRI",
+    "Zambia": "ZAM", "Zimbabwe": "ZIM", "Botswana": "BOT", "Peru": "PER",
+    "Mexico": "MEX", "Guatemala": "GUA", "Cuba": "CUB", "Chile": "CHI",
+    "Argentina": "ARG", "Sri Lanka": "SRI", "Nepal": "NEP", "Pakistan": "PAK",
+    "Laos": "LAO", "Myanmar": "MYA", "Cambodia": "CAM", "Azerbaijan": "AZE",
+    "Georgia": "GEO", "Kazakhstan": "KAZ", "Uzbekistan": "UZB", "Iran": "IRI",
+    "Mongolia": "MGL", "Luxembourg": "LUX",
+}
 
 
-def parse_rankings_table(html: str) -> list[dict]:
-    soup = BeautifulSoup(html, "html.parser")
-    table = soup.find("table", class_="rankings-table")
-    if table is None:
-        raise RuntimeError("未找到 rankings-table（选择器失配）")
+def api_get(path: str, params: dict) -> dict:
+    r = requests.get(API + path, params=params,
+                     headers={"User-Agent": UA, "Accept": "application/json"}, timeout=15)
+    r.raise_for_status()
+    return r.json()
+
+
+def publication_id_from_weeks(weeks: list[dict]) -> str:
+    """最新一期周 key 形如 "2026-34-4435"；API 只认纯数字尾段（传整串会返回空表）。"""
+    return str(weeks[0]["key"]).rsplit("-", 1)[-1]
+
+
+def latest_publication_id() -> str:
+    return publication_id_from_weeks(api_get("/vue-rankingweek", {"rankId": RANK_ID}))
+
+
+def _strip_html(s: str | None) -> str:
+    return re.sub(r"<[^>]+>", "", s or "").strip()
+
+
+def parse_rankings_payload(payload: dict) -> list[dict]:
+    """vue-rankingtable 响应 → 统一 entries（与旧 schema 兼容：rank/change/country/player/points）。"""
     entries: list[dict] = []
-    for tr in table.find_all("tr"):
-        tds = tr.find_all("td")
-        if len(tds) < 6:
-            continue
-        rank_m = re.search(r"\d+", tds[0].get_text())
-        if not rank_m:
-            continue
-        country_el = tds[1].select_one(".country span")
-        players = [a.get_text(strip=True) for a in tds[2].select(".player a")]
-        change_m = re.search(r"-?\d+", tds[3].get_text())
-        points_m = re.search(r"[\d,]+", tds[4].get_text())
-        if not players:
-            continue
+    for row in payload.get("results", {}).get("data", []):
+        players = [_strip_html(row[side]["name_display_bold"])
+                   for side in ("player1_model", "player2_model") if row.get(side)]
+        country_model = row.get("p1_country_model") or {}
         entries.append({
-            "rank": int(rank_m.group()),
-            "change": int(change_m.group()) if change_m else 0,
-            "country": country_el.get_text(strip=True) if country_el else "",
+            "rank": int(row.get("rank") or 0),
+            "change": int(row.get("rank_change") or 0),
+            "country": COUNTRY_CODES.get(country_model.get("name", ""), country_model.get("name", "")),
             "player": " / ".join(players),
-            "points": int(points_m.group().replace(",", "")) if points_m else 0,
+            "points": int(float(row.get("points") or 0)),
         })
-        if len(entries) >= 50:
-            break
     return entries
 
 
 def scrape_rankings() -> dict:
-    base_q = resolve_current_params()
-    q = dict(pair.split("=", 1) for pair in base_q.split("&"))
+    pub = latest_publication_id()
     disciplines = {}
     for key, cat_id in CAT_IDS.items():
-        q["cat_id"] = str(cat_id)
-        url = BASE + "/rankings/?" + "&".join(f"{k}={v}" for k, v in q.items())
-        entries = parse_rankings_table(http_get(url))
+        payload = api_get("/vue-rankingtable", {
+            "rankId": RANK_ID, "catId": cat_id, "publicationId": pub,
+            "pageKey": 50, "page": 1,
+        })
+        entries = parse_rankings_payload(payload)
         if len(entries) < 40:
             raise RuntimeError(f"{key} 只解析到 {len(entries)} 行（阈值 40），中止以防残缺数据")
         disciplines[key] = {"name": DISCIPLINE_NAMES[key], "entries": entries}
         time.sleep(2)  # 礼貌间隔
     return {
         "updatedAt": datetime.now(timezone.utc).astimezone().isoformat(timespec="seconds"),
-        "source": "bwfworldtour.bwfbadminton.com",
+        "source": "extranet-lv.bwfbadminton.com · BWF World Rankings",
         "disciplines": disciplines,
     }
 
