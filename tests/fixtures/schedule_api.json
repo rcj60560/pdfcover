@@ -10,7 +10,8 @@
   {"month": "August", "monthNo": 8, "tournaments": [
     {"prize_money": null, "start_date": "2026-08-17 00:00:00", "end_date": "2026-08-23 00:00:00",
      "name": "BWF World Championships 2026", "location": "New Delhi, India", "country": "India",
-     "category": "Grade 1 – Individual Tournaments"},
+     "category": "Grade 1 – Individual Tournaments", "code": "B671FB97-491C-46D3-982F-56525168C3AA",
+     "has_live_scores": true},
     {"prize_money": null, "start_date": "2026-10-11 00:00:00", "end_date": "2026-10-17 00:00:00",
      "name": "VICTOR BWF World Junior Championships 2026", "location": "Cairo, Egypt", "country": "Egypt",
      "category": "Grade 1 – Individual Junior Tournaments"}

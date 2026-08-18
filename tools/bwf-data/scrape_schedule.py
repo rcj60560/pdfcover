@@ -46,6 +46,9 @@ def parse_schedule(payload: dict, year: int) -> dict:
                 "city": t.get("location", ""),
                 "level": level,
                 "prizeMoney": int(prize) if prize.isdigit() else 0,
+                # App 端"本周赛况"用 code 直连 extranet-lv day-matches API
+                "code": t.get("code"),
+                "hasLiveScores": bool(t.get("has_live_scores", False)),
             })
     tournaments.sort(key=lambda x: x["startDate"])
     return {

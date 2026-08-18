@@ -38,4 +38,9 @@ def test_parse_filters_and_sorts():
     assert worlds["level"] == "major"
     assert worlds["prizeMoney"] == 0  # prize_money null → 0
     assert worlds["startDate"] == "2026-08-17"
+    assert worlds["code"] == "B671FB97-491C-46D3-982F-56525168C3AA"
+    assert worlds["hasLiveScores"] is True
+    # 旧字段缺 code/has_live_scores 时回退 null/False（向后兼容）
+    assert data["tournaments"][0]["code"] is None
+    assert data["tournaments"][0]["hasLiveScores"] is False
     assert data["year"] == 2026
