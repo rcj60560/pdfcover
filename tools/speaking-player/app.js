@@ -56,8 +56,10 @@ async function playIndex(i) {
   audio.play().catch(() => {});
   if (t.hasSubtitle) {
     try {
-      state.timeline = await fetchJson(TRACKS + encodeURIComponent(t.name + ".json"));
-      $("no-sub-msg").hidden = !!state.timeline.words.length;
+      const tl = await fetchJson(TRACKS + encodeURIComponent(t.name + ".json"));
+      if (state.current !== i) return;   // 已切到别的曲目，丢弃过期响应
+      state.timeline = tl;
+      $("no-sub-msg").hidden = !!tl.words.length;
       updateZh();
     } catch (e) { console.error("timeline 加载失败:", e); $("no-sub-msg").hidden = false; }
   } else {
