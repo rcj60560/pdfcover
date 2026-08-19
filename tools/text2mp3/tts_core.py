@@ -162,11 +162,16 @@ async def synthesize(text: str, voice: str, rate: str, pitch: str,
 
     sink = StreamSink(mp3_path)
     try:
-        # edge-tts 7.x 默认发 SentenceBoundary，必须显式要 WordBoundary 才有词级时间轴
-        async for chunk in edge_tts.Communicate(
-                text, voice, rate=rate, pitch=pitch, boundary="WordBoundary").stream():
-            sink.feed(chunk)
-    finally:
-        sink.close()
+        try:
+            # edge-tts 7.x 默认发 SentenceBoundary，必须显式要 WordBoundary 才有词级时间轴
+            async for chunk in edge_tts.Communicate(
+                    text, voice, rate=rate, pitch=pitch, boundary="WordBoundary").stream():
+                sink.feed(chunk)
+        finally:
+            sink.close()   # 先关句柄再删文件（Windows 下删打开中的文件会 PermissionError）
+    except BaseException:
+        mp3_path.unlink(missing_ok=True)                 # 不留截断 mp3
+        timeline_path(mp3_path).unlink(missing_ok=True)  # 不留旧 json 与新 mp3 错配
+        raise
     return write_timeline(mp3_path, build_timeline(
         sink.events, text=text, voice=voice, rate=rate, pitch=pitch, translation=translation))

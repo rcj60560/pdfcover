@@ -43,4 +43,4 @@ def test_collect_media(tmp_path):
 
     files = front_files(BASE)
     assert all(f.name in ("index.html", "app.js", "core.js", "style.css") for f in files)
-    assert len(files) >= 3
+    assert len(files) == 4  # index.html/app.js/core.js/style.css 全部在场

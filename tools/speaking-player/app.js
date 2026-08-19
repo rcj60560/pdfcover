@@ -13,7 +13,6 @@ const state = {
   timeline: null,          // {words, sentences, translation} | null
   sentIdx: -1, wordIdx: -1,
   loopSent: false, speed: 1, showZh: false,
-  zhLoaded: false,
 };
 
 /* ---------- 视图 ---------- */
@@ -61,7 +60,10 @@ async function playIndex(i) {
       state.timeline = tl;
       $("no-sub-msg").hidden = !!tl.words.length;
       updateZh();
-    } catch (e) { console.error("timeline 加载失败:", e); $("no-sub-msg").hidden = false; }
+    } catch (e) {
+      console.error("timeline 加载失败:", e);
+      if (state.current === i) $("no-sub-msg").hidden = false;   // 过期失败不覆盖新曲目
+    }
   } else {
     $("no-sub-msg").hidden = false;
   }

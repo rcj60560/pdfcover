@@ -152,3 +152,29 @@ def test_stream_sink_collects_and_writes(tmp_path):
     sink.close()
     assert mp3.read_bytes() == b"\xff\xf3xy"
     assert sink.events == [{"type": "WordBoundary", "text": "Hi", "offset": 0, "duration": 100_000}]
+
+
+def test_synthesize_failure_cleans_pair(tmp_path, monkeypatch):
+    """合成中途失败：截断 mp3 与同名旧 json 都不得留在盘上（离线 fake edge_tts）。"""
+    import asyncio
+    import types
+
+    class _Comm:
+        def __init__(self, *a, **k):
+            pass
+
+        async def stream(self):
+            yield {"type": "audio", "data": b"\xff\xf3x"}
+            raise RuntimeError("net down")
+
+    fake = types.ModuleType("edge_tts")
+    fake.Communicate = _Comm
+    monkeypatch.setitem(sys.modules, "edge_tts", fake)
+
+    mp3 = tmp_path / "a.mp3"
+    stale = core.timeline_path(mp3)
+    stale.write_text("{}", encoding="utf-8")   # 模拟上一次成功运行留下的旧 json
+    import pytest
+    with pytest.raises(RuntimeError):
+        asyncio.run(core.synthesize("hi", "v", "+0%", "+0Hz", mp3))
+    assert not mp3.exists() and not stale.exists()
