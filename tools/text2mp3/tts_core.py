@@ -77,3 +77,62 @@ def resolve_output_path(out_dir: str, filename: str) -> Path:
     path = Path(out_dir) / (sanitize_filename(filename) + ".mp3")
     path.parent.mkdir(parents=True, exist_ok=True)
     return path
+
+
+# ---------- timeline（词级时间轴） ----------
+
+_SENTENCE_SPLIT = re.compile(r"(?<=[.!?…])\s+")
+
+
+def split_sentences_text(text: str) -> list[str]:
+    """按句末标点（. ! ? …）切原文，保留标点；丢弃空白片段。"""
+    return [p for p in _SENTENCE_SPLIT.split(text.strip()) if p.strip()]
+
+
+def _tokens(s: str) -> list[str]:
+    """仅保留字母数字撇号，小写——用于把事件词数对到原文句子上。"""
+    return re.findall(r"[a-zA-Z0-9']+", s.lower())
+
+
+def _derive_sentences(words: list[dict], text: str) -> list[dict]:
+    n = len(words)
+    if n == 0:
+        return []
+    whole = {"text": text.strip(), "i": 0, "j": n - 1,
+             "start": words[0]["s"], "end": words[-1]["s"] + words[-1]["d"]}
+    sent_texts = split_sentences_text(text)
+    if not sent_texts:
+        return [whole]
+    out: list[dict] = []
+    idx = 0
+    for st in sent_texts:
+        if idx >= n:
+            break
+        j = min(idx + max(len(_tokens(st)), 1), n) - 1
+        out.append({"text": st, "i": idx, "j": j,
+                    "start": words[idx]["s"], "end": words[j]["s"] + words[j]["d"]})
+        idx = j + 1
+    if idx < n and out:  # 尾部未覆盖的词并入最后一句
+        out[-1]["j"] = n - 1
+        out[-1]["end"] = words[-1]["s"] + words[-1]["d"]
+    return out
+
+
+def build_timeline(events: list[dict], text: str = "", voice: str = "",
+                   rate: str = "+0%", pitch: str = "+0Hz", translation: str = "") -> dict:
+    """edge-tts stream 事件（100ns 单位）→ timeline dict（毫秒单位）。纯函数。"""
+    words = [{"t": ev["text"], "s": ev["offset"] // 10000, "d": ev["duration"] // 10000}
+             for ev in events if ev.get("type") == "WordBoundary"]
+    return {"voice": voice, "rate": rate, "pitch": pitch,
+            "words": words, "sentences": _derive_sentences(words, text),
+            "translation": translation}
+
+
+def timeline_path(mp3_path: Path) -> Path:
+    return mp3_path.with_suffix(".json")
+
+
+def write_timeline(mp3_path: Path, timeline: dict) -> Path:
+    p = timeline_path(mp3_path)
+    p.write_text(json.dumps(timeline, ensure_ascii=False), encoding="utf-8")
+    return p

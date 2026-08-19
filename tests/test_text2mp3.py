@@ -74,3 +74,66 @@ def test_manifest_discovers_text2mp3():
     assert tool.status == "ready"
     assert tool.port == 8300
     assert tool.name == "文本转语音 MP3"
+
+
+def _ev(text, offset_100ns, dur_100ns):
+    return {"type": "WordBoundary", "text": text, "offset": offset_100ns, "duration": dur_100ns}
+
+
+def test_split_sentences_text():
+    text = "To me, English is a bridge. It's magical! Isn't it?"
+    assert core.split_sentences_text(text) == [
+        "To me, English is a bridge.", "It's magical!", "Isn't it?",
+    ]
+    assert core.split_sentences_text("  ") == []
+
+
+def test_build_timeline_units_and_sentences():
+    events = [
+        _ev("To", 0, 2_100_000),           # s=0ms d=210ms
+        _ev("me,", 240_000, 180_000),      # s=24ms d=18ms
+        _ev("world.", 500_000, 300_000),   # s=50ms d=30ms
+    ]
+    tl = core.build_timeline(events, text="To me, world.",
+                             voice="v1", rate="-10%", pitch="+0Hz", translation="译")
+    assert tl["words"] == [
+        {"t": "To", "s": 0, "d": 210},
+        {"t": "me,", "s": 24, "d": 18},
+        {"t": "world.", "s": 50, "d": 30},
+    ]
+    # 一句（token 数 3 = 词数 3），覆盖全部词
+    assert len(tl["sentences"]) == 1
+    s = tl["sentences"][0]
+    assert (s["i"], s["j"]) == (0, 2)
+    assert s["start"] == 0 and s["end"] == 80   # 50+30
+    assert tl["translation"] == "译" and tl["voice"] == "v1"
+
+
+def test_build_timeline_multi_sentence_by_token_count():
+    text = "I jump. You run fast!"
+    # 原文句子 token 数：[2, 3]
+    events = [
+        _ev("I", 0, 100_000), _ev("jump.", 100_000, 100_000),
+        _ev("You", 300_000, 100_000), _ev("run", 450_000, 100_000), _ev("fast!", 600_000, 150_000),
+    ]
+    tl = core.build_timeline(events, text=text)
+    assert [(s["i"], s["j"]) for s in tl["sentences"]] == [(0, 1), (2, 4)]
+    assert tl["sentences"][0]["end"] == 20        # 10+10
+    assert tl["sentences"][1]["start"] == 30
+
+
+def test_build_timeline_empty_and_tail_merge():
+    assert core.build_timeline([], text="x")["words"] == []
+    assert core.build_timeline([], text="x")["sentences"] == []
+    # 尾部剩余词并入最后一句（token 数对不上时）
+    events = [_ev("a", 0, 100_000), _ev("b", 100_000, 100_000), _ev("c", 200_000, 100_000)]
+    tl = core.build_timeline(events, text="a. b.")   # 句子 token 数 [1,1]，第三个词多出来
+    assert (tl["sentences"][-1]["i"], tl["sentences"][-1]["j"]) == (1, 2)
+
+
+def test_timeline_path_and_write(tmp_path):
+    mp3 = tmp_path / "话题1-试.mp3"
+    p = core.timeline_path(mp3)
+    assert p.name == "话题1-试.json"
+    out = core.write_timeline(mp3, {"words": [], "sentences": [], "translation": ""})
+    assert out == p and p.exists()
