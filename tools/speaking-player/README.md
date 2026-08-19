@@ -8,6 +8,9 @@
 cd speaking-player && python dev_server.py    # http://127.0.0.1:8400
 真实音频放 fixtures/tracks/（X.mp3 + X.json，gitignore；用 tools/text2mp3/tts_cli.py 生成）
 
+手机同 Wi-Fi 预览：`python dev_server.py --lan` → 手机浏览器开打印出来的局域网地址
+（首次 Windows 防火墙弹窗需点「允许」；仅供家庭内网调试用）
+
 ## 测试
 node --test                       # core.js 纯逻辑
 pytest tests/test_speaking_player.py

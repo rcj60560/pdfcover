@@ -82,10 +82,29 @@ class Handler(BaseHTTPRequestHandler):
         sys.stderr.write("%s - %s\n" % (self.address_string(), fmt % args))
 
 
-def main(port=8400):
-    print(f"dev server on http://127.0.0.1:{port}/   (tracks -> {TRACKS_DIR})")
-    HTTPServer(("127.0.0.1", port), Handler).serve_forever()
+def lan_ip() -> str:
+    """取本机局域网 IP（连不上外网时退化为主机名解析）。"""
+    import socket
+    try:
+        s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        s.connect(("8.8.8.8", 80))   # 不会真发包，只为让系统选默认路由的地址
+        ip = s.getsockname()[0]
+        s.close()
+        return ip
+    except OSError:
+        return socket.gethostbyname(socket.gethostname())
+
+
+def main(port=8400, lan=False):
+    host = "0.0.0.0" if lan else "127.0.0.1"
+    if lan:
+        print(f"dev server on http://127.0.0.1:{port}/  and  http://{lan_ip()}:{port}/   (LAN，手机同一 Wi-Fi 可访问)")
+    else:
+        print(f"dev server on http://127.0.0.1:{port}/   (tracks -> {TRACKS_DIR})")
+    HTTPServer((host, port), Handler).serve_forever()
 
 
 if __name__ == "__main__":
-    main(int(sys.argv[1]) if len(sys.argv) > 1 else 8400)
+    args = [a for a in sys.argv[1:] if a != "--lan"]
+    lan = "--lan" in sys.argv
+    main(int(args[0]) if args else 8400, lan=lan)
