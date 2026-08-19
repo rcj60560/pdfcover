@@ -1,0 +1,12 @@
+name = "口语跟读播放器"
+desc = "口语回答 MP3 + 词级时间轴：卡拉OK 逐词高亮、单句循环、倍速、中文翻译（本地预览版）"
+category = "英语"
+status = "ready"
+
+[run]
+cmd = ["python", "dev_server.py"]
+port = 8400
+url = "http://127.0.0.1:8400"
+
+[links]
+live = ""
