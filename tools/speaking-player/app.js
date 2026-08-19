@@ -12,8 +12,15 @@ const state = {
   tracks: [], current: -1,
   timeline: null,          // {words, sentences, translation} | null
   sentIdx: -1, wordIdx: -1,
-  loopSent: false, speed: 1, showZh: false,
+  loopSent: false, sentMode: false, gapMs: 2000,
+  gapTimer: null, autoPaused: false,
+  speed: 1, showZh: false,
 };
+
+/* 取消「N 秒后自动下一句」的定时器（手动暂停/拖动/切歌/关模式时调用） */
+function clearGap() {
+  if (state.gapTimer) { clearTimeout(state.gapTimer); state.gapTimer = null; }
+}
 
 /* ---------- 视图 ---------- */
 function showHome() {
@@ -46,6 +53,7 @@ async function playIndex(i) {
   if (!t) return;
   state.current = i;
   state.timeline = null; state.sentIdx = -1; state.wordIdx = -1;
+  clearGap(); state.autoPaused = false;
   $("home-view").hidden = true; $("player-view").hidden = false;
   $("back-btn").hidden = false; $("view-title").textContent = t.name;
   $("no-sub-msg").hidden = true; $("translation").hidden = true;
@@ -79,6 +87,18 @@ function tick() {
     // 单句循环：句尾前 30ms 回句头
     if (state.loopSent && range && tMs >= range.end - 30) {
       audio.currentTime = range.start / 1000;
+      return scheduleTick();
+    }
+    // 逐句模式：句尾停 gapMs 毫秒，再自动播下一句（最后一句停住）
+    if (state.sentMode && range && tMs >= range.end - 30) {
+      audio.currentTime = range.end / 1000;
+      state.autoPaused = true;          // 标记这是程序触发的暂停，别取消定时器
+      audio.pause();
+      state.gapTimer = setTimeout(() => {
+        state.gapTimer = null;
+        const next = sentenceRange(state.timeline.sentences, sIdx + 1);
+        if (next) { audio.currentTime = next.start / 1000; audio.play().catch(() => {}); }
+      }, state.gapMs);
       return scheduleTick();
     }
     if (sIdx !== state.sentIdx) {
@@ -138,7 +158,25 @@ function bind() {
   $("replay-sent").addEventListener("click", () => seekSentence(0));
   $("loop-sent").addEventListener("click", () => {
     state.loopSent = !state.loopSent;
+    if (state.loopSent && state.sentMode) {   // 两个句模式互斥
+      state.sentMode = false; clearGap();
+      $("sent-mode").classList.remove("active");
+    }
     $("loop-sent").classList.toggle("active", state.loopSent);
+  });
+  $("sent-mode").addEventListener("click", () => {
+    state.sentMode = !state.sentMode;
+    if (state.sentMode && state.loopSent) {   // 两个句模式互斥
+      state.loopSent = false;
+      $("loop-sent").classList.remove("active");
+    }
+    if (!state.sentMode) clearGap();
+    $("sent-mode").classList.toggle("active", state.sentMode);
+  });
+  $("gap").addEventListener("click", () => {   // 句间停顿：1s/2s/3s/5s 循环
+    const GAPS = [1000, 2000, 3000, 5000];
+    state.gapMs = GAPS[(GAPS.indexOf(state.gapMs) + 1) % GAPS.length];
+    $("gap").textContent = state.gapMs / 1000 + "s";
   });
   $("speed").addEventListener("click", () => {
     const SPEEDS = [0.6, 0.8, 1, 1.25];
@@ -154,6 +192,7 @@ function bind() {
   $("seek").addEventListener("pointerdown", () => { scrubbing = true; });
   $("seek").addEventListener("pointerup", () => { scrubbing = false; });
   $("seek").addEventListener("input", () => {
+    clearGap();   // 用户主动拖动，取消自动下一句
     if (audio.duration) audio.currentTime = ($("seek").value / 1000) * audio.duration;
   });
   audio.addEventListener("timeupdate", () => {
@@ -163,8 +202,12 @@ function bind() {
   audio.addEventListener("loadedmetadata", () => {
     $("dur-time").textContent = formatTime(audio.duration);
   });
-  audio.addEventListener("play", () => { $("play").textContent = "⏸"; });
-  audio.addEventListener("pause", () => { $("play").textContent = "▶"; });
+  audio.addEventListener("play", () => { $("play").textContent = "⏸"; clearGap(); });
+  audio.addEventListener("pause", () => {
+    $("play").textContent = "▶";
+    if (!state.autoPaused) clearGap();   // 用户手动暂停：取消自动下一句
+    state.autoPaused = false;
+  });
   audio.addEventListener("error", () => { $("sentence").textContent = "⚠ 音频加载失败"; });
 }
 
