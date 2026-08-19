@@ -35,6 +35,7 @@ docs/                  本文档 + superpowers/{specs,plans} 设计/计划文档
 | agent-learning | Agent 学习路线 | 7000 | `python dev_server.py` | 学习地图 + 跟练代码 |
 | bwf-data | 羽联数据 | — | `python run_all.py` | BWF 排名/赛程抓取→发布（批处理，无网页） |
 | text2mp3 | 文本转语音 MP3 | 8300 | `python app.py` | 粘贴文本→edge-tts→MP3（新一代 Ava/Emma 语音 + 音调微调），默认存 IELTS 笔记库口语回答/音频；另有 `tts_cli.py` 供自动化 |
+| speaking-player | 口语跟读播放器 | 8400 | `python dev_server.py` | MP3+timeline json 卡拉OK逐词高亮跟读；sync_speaking.py 一键上服务器 |
 | word2md / dics | （占位） | — | — | planned，面板置灰 |
 
 ## 加新工具（3 步，无需改 launcher）
@@ -60,6 +61,7 @@ docs/                  本文档 + superpowers/{specs,plans} 设计/计划文档
 
 ## 变更记录
 
+- **2026-08-19**：新增 `speaking-player`（卡拉OK 跟读播放器，:8400）；text2mp3 升级为 MP3+timeline json 双落地。
 - **2026-08-19**：新增 `text2mp3`（文本→edge-tts→MP3，:8300），根 README 工具表补全（agent-learning、bwf-data），本文档改为「项目导读」并新增 AI 会话约定章节。
 - **2026-07-31**：pdfcover/audioplayer `git mv` 搬入 `tools/`（历史保留）；launcher（manifest+probe+processes+面板）TDD 完成；顶层 README/pyproject/run 脚本就位；测试全绿（launcher 4 + pdfcover 54 + audioplayer 19）。
 

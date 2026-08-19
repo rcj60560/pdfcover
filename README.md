@@ -20,6 +20,7 @@ python -m launcher        # 或双击 run.bat / ./run.sh
 | Agent 学习路线 | 零基础转 Agent 开发学习地图 + 本地跟练代码 | http://127.0.0.1:7000 |
 | 羽联数据 | BWF 世界排名/赛程抓取 → JSON → 发布羽圈 App（批处理，无网页） | — |
 | 文本转语音 MP3 | 粘贴文本 → edge-tts 神经语音导出 MP3（默认存 IELTS 口语回答/音频） | http://127.0.0.1:8300 |
+| 口语跟读播放器 | MP3+词级时间轴卡拉OK跟读（本地预览；线上 http://47.108.230.162/script/speaking/ ） | http://127.0.0.1:8400 |
 
 （word2md、dics 为占位，待实现。）
 

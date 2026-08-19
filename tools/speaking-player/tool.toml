@@ -9,4 +9,4 @@ port = 8400
 url = "http://127.0.0.1:8400"
 
 [links]
-live = ""
+live = "http://47.108.230.162/script/speaking/"
