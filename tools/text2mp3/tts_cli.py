@@ -3,7 +3,7 @@
 用法（在 tools/text2mp3/ 目录下）：
     python tts_cli.py 回答.txt -n 话题1-为什么我要学英语 [-v 语音ID] [-r -10] [--pitch -5] [-o 输出目录]
 
-成功后打印 MP3 完整路径。不写 config.json（不动网页端记住的设置）。
+成功后打印 MP3 与 timeline json 两个完整路径。不写 config.json（不动网页端记住的设置）。
 """
 from __future__ import annotations
 
@@ -33,13 +33,15 @@ def main(argv: list[str] | None = None) -> None:
         raise SystemExit(f"未知语音：{args.voice}（可用列表见 tts_core.VOICES）")
 
     out = core.resolve_output_path(args.out_dir, args.name or Path(args.file).stem)
-    import edge_tts  # 延迟导入，保持纯逻辑可单测
-
-    asyncio.run(edge_tts.Communicate(
+    json_path = asyncio.run(core.synthesize(
         text, args.voice,
         rate=core.format_rate(args.rate), pitch=core.format_pitch(args.pitch),
-    ).save(str(out)))
+        mp3_path=out,
+        translation=Path(args.file + ".zh").read_text(encoding="utf-8").strip()
+        if Path(args.file + ".zh").is_file() else "",
+    ))
     print(out)
+    print(json_path)
 
 
 if __name__ == "__main__":

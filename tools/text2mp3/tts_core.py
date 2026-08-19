@@ -136,3 +136,37 @@ def write_timeline(mp3_path: Path, timeline: dict) -> Path:
     p = timeline_path(mp3_path)
     p.write_text(json.dumps(timeline, ensure_ascii=False), encoding="utf-8")
     return p
+
+
+class StreamSink:
+    """消费 edge-tts stream() 事件流：音频块写文件、收 WordBoundary。纯同步可单测。"""
+
+    def __init__(self, mp3_path: Path):
+        self._f = open(mp3_path, "wb")
+        self.events: list[dict] = []
+
+    def feed(self, chunk: dict) -> None:
+        if chunk.get("type") == "audio":
+            self._f.write(chunk["data"])
+        elif chunk.get("type") == "WordBoundary":
+            self.events.append(chunk)
+
+    def close(self) -> None:
+        self._f.close()
+
+
+async def synthesize(text: str, voice: str, rate: str, pitch: str,
+                     mp3_path: Path, translation: str = "") -> Path:
+    """edge-tts 合成：MP3 与同名 timeline json 一起落地，返回 json 路径。"""
+    import edge_tts  # 延迟导入，保持纯逻辑可单测
+
+    sink = StreamSink(mp3_path)
+    try:
+        # edge-tts 7.x 默认发 SentenceBoundary，必须显式要 WordBoundary 才有词级时间轴
+        async for chunk in edge_tts.Communicate(
+                text, voice, rate=rate, pitch=pitch, boundary="WordBoundary").stream():
+            sink.feed(chunk)
+    finally:
+        sink.close()
+    return write_timeline(mp3_path, build_timeline(
+        sink.events, text=text, voice=voice, rate=rate, pitch=pitch, translation=translation))

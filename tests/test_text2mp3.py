@@ -137,3 +137,18 @@ def test_timeline_path_and_write(tmp_path):
     assert p.name == "话题1-试.json"
     out = core.write_timeline(mp3, {"words": [], "sentences": [], "translation": ""})
     assert out == p and p.exists()
+
+
+def test_stream_sink_collects_and_writes(tmp_path):
+    mp3 = tmp_path / "a.mp3"
+    sink = core.StreamSink(mp3)
+    for chunk in [
+        {"type": "audio", "data": b"\xff\xf3x"},
+        {"type": "WordBoundary", "text": "Hi", "offset": 0, "duration": 100_000},
+        {"type": "audio", "data": b"y"},
+        {"type": "SentenceBoundary", "offset": 0, "duration": 0, "text": "Hi"},
+    ]:
+        sink.feed(chunk)
+    sink.close()
+    assert mp3.read_bytes() == b"\xff\xf3xy"
+    assert sink.events == [{"type": "WordBoundary", "text": "Hi", "offset": 0, "duration": 100_000}]

@@ -19,13 +19,6 @@ import tts_core as core
 app = Flask(__name__)
 
 
-async def _synthesize(text: str, voice: str, rate: str, pitch: str, out_path: Path) -> None:
-    """调用 edge-tts 生成单个 MP3（同步代码里用 asyncio.run 包）。"""
-    import edge_tts  # 延迟导入：纯逻辑单测无需装它
-
-    await edge_tts.Communicate(text, voice, rate=rate, pitch=pitch).save(str(out_path))
-
-
 @app.get("/")
 def index():
     cfg = core.load_config()
@@ -51,12 +44,13 @@ def api_tts():
     pitch = core.format_pitch(data.get("pitch") or 0)
     out_path = core.resolve_output_path(out_dir, data.get("filename") or "")
     try:
-        asyncio.run(_synthesize(text, voice, rate, pitch, out_path))
+        json_path = asyncio.run(core.synthesize(text, voice, rate, pitch, out_path))
     except Exception as exc:  # edge-tts 网络/鉴权失败等，原样带回页面
         return jsonify(ok=False, error=f"合成失败：{exc}"), 500
 
     core.save_config(voice, int(rate.rstrip("%")), int(pitch.rstrip("Hz")), out_dir)  # 记住本次设置
-    return jsonify(ok=True, path=str(out_path), play=url_for("play", p=str(out_path)))
+    return jsonify(ok=True, path=str(out_path), json_path=str(json_path),
+                   play=url_for("play", p=str(out_path)))
 
 
 @app.get("/api/play")
