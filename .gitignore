@@ -51,6 +51,10 @@ tools/text2mp3/config.json
 # Spec workflow
 .spec-workflow/
 
+# speaking-player 本地预览用真实音频（体积大，不入库）
+tools/speaking-player/fixtures/tracks/*
+!tools/speaking-player/fixtures/tracks/.gitkeep
+
 # OS
 .DS_Store
 Thumbs.db
