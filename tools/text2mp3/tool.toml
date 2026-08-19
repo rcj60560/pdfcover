@@ -1,0 +1,12 @@
+name = "文本转语音 MP3"
+desc = "粘贴文本 → 微软神经语音（edge-tts）朗读并导出 MP3，默认存到 IELTS 口语回答/音频"
+category = "英语"
+status = "ready"
+
+[run]
+cmd = ["python", "app.py"]
+port = 8300
+url = "http://127.0.0.1:8300"
+
+[links]
+live = ""

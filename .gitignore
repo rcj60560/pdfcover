@@ -45,6 +45,9 @@ htmlcov/
 # Generated outputs (OCR'd PDFs, reflow text, etc.)
 coverdPDF/
 
+# text2mp3 本地记忆（上次语音/语速/输出目录，含个人路径）
+tools/text2mp3/config.json
+
 # Spec workflow
 .spec-workflow/
 
