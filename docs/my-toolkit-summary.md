@@ -41,14 +41,14 @@ docs/                  本文档 + superpowers/{specs,plans} 设计/计划文档
 ## 加新工具（3 步，无需改 launcher）
 
 1. 复制 `tools/_template/` → `tools/<你的工具>/`
-2. 改 `tool.toml`：`name` / `desc` / `category` / `[run] cmd,port,url`（端口避开已用的 5000/5500/7000/8000/8300）
+2. 改 `tool.toml`：`name` / `desc` / `category` / `[run] cmd,port,url`（端口避开已用的 5000/5500/7000/8000/8300/8400）
 3. 代码丢进去；纯逻辑抽 `*_core.py` 之类，测试放根 `tests/test_<工具名>.py`
 
 刷新面板自动出现。
 
 ## 约定（AI 会话开发前速读）
 
-- **端口分配**：面板 5500；工具 5000 / 7000 / 8000 / 8300 已占，新工具挑没用的。
+- **端口分配**：面板 5500；工具 5000 / 7000 / 8000 / 8300 / 8400 已占，新工具挑没用的。
 - **测试**：根 `pytest` 一把跑全部；根 tests/ 导入工具代码用 `sys.path.insert(0, .../tools/<工具>)`（见 `tests/test_bwf_preview.py`、`tests/test_text2mp3.py`）。跨工具依赖网络/重进程的不进单测。
 - **TDD/流程**：本仓库用 superpowers 工作流，设计/计划文档在 `docs/superpowers/{specs,plans}`，命名 `YYYY-MM-DD-<主题>-{design,plan}.md`。
 - **工具自包含**：web 工具两种风格都行——stdlib `http.server`（audio-player）或 Flask（text2mp3、pdf-ocr web）；依赖多就给工具配 `requirements.txt` 或独立 pyproject。
