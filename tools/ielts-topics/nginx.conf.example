@@ -1,0 +1,9 @@
+# ===== 走遍美国口语话题 nginx 配置示例 =====
+# 服务器实际操作（宝塔）：把下面的 location 存为
+# /www/server/panel/vhost/nginx/extension/47.108.230.162/topics.conf
+# 然后：nginx -t && nginx -s reload
+
+location /script/topics/ {
+    alias /www/wwwroot/47.108.230.162/script/topics/;
+    autoindex off;
+}

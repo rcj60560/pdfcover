@@ -45,9 +45,22 @@ htmlcov/
 # Generated outputs (OCR'd PDFs, reflow text, etc.)
 coverdPDF/
 
+# text2mp3 本地记忆（上次语音/语速/输出目录，含个人路径）
+tools/text2mp3/config.json
+
 # Spec workflow
 .spec-workflow/
+
+# speaking-player 本地预览用真实音频（体积大，不入库）
+tools/speaking-player/fixtures/tracks/*
+!tools/speaking-player/fixtures/tracks/.gitkeep
 
 # OS
 .DS_Store
 Thumbs.db
+
+# 走遍美国台词提取中间产物（体积大，不入库；源 xls 已在库）
+scripts/out/
+
+# bwf-data 本地抓取输出
+tools/bwf-data/out/

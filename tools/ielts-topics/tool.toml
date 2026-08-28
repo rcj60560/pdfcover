@@ -1,0 +1,12 @@
+name = "走遍美国口语话题"
+desc = "新世纪走遍美国 45 单元台词 → 188 个 IELTS 口语话题（6-7 分）：题目 + 思路 + 词汇 + 中英对照范文"
+category = "英语"
+status = "ready"
+
+[run]
+cmd = ["python", "dev_server.py"]
+port = 8500
+url = "http://127.0.0.1:8500"
+
+[links]
+live = "http://47.108.230.162/script/topics/"

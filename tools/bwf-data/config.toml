@@ -1,0 +1,4 @@
+# 羽圈 App 仓库（发布目标）
+[app]
+repo = "D:/Users/luocj/tf/yucircle/circle"
+assets_dir = "assets/data/bwf"

@@ -1,0 +1,17 @@
+{
+ "results": {
+  "data": [
+   {
+    "id": 26010890, "rank": 1, "rank_previous": 1, "rank_change": 0,
+    "points": "90110.0000", "tournaments": 14,
+    "player1_model": {"id": 1, "slug": "feng-yan-zhe",
+                      "name_display_bold": "<span class=\"name-2\">FENG</span> <span class=\"name-1\">Yan Zhe</span>"},
+    "player2_model": {"id": 2, "slug": "huang-dong-ping",
+                      "name_display_bold": "<span class=\"name-2\">HUANG</span> <span class=\"name-1\">Dong Ping</span>"},
+    "p1_country_model": {"name": "China", "flag_name_svg": "china.svg"},
+    "p2_country_model": {"name": "China", "flag_name_svg": "china.svg"}
+   }
+  ]
+ },
+ "drawCount": null
+}

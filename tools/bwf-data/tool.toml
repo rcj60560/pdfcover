@@ -1,0 +1,12 @@
+name = "羽联数据"
+desc = "抓取 BWF 世界排名(5单项×Top50)与巡回赛赛程 → JSON → 发布到羽圈 App（附网页预览）"
+category = "数据"
+status = "ready"
+
+[run]
+cmd = ["python", "run_all.py"]
+port = 0
+url = ""
+
+[links]
+live = ""

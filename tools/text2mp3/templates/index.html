@@ -1,0 +1,135 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="utf-8">
+<title>文本转语音 MP3</title>
+<style>
+  :root { color-scheme: light; }
+  * { box-sizing: border-box; }
+  body { font-family: "Segoe UI", "Microsoft YaHei", sans-serif; max-width: 1180px;
+         margin: 28px auto; padding: 0 16px; color: #24292f; background: #f6f8fa; }
+  h1 { font-size: 22px; margin: 0 0 16px; }
+  .wrap { display: flex; gap: 16px; align-items: stretch; }
+  .card { background: #fff; border: 1px solid #d0d7de; border-radius: 8px; padding: 18px; }
+  .main { flex: 1.7; display: flex; flex-direction: column; }
+  .side { flex: 0 0 340px; display: flex; flex-direction: column; }
+  .main label { font-size: 13px; color: #57606a; margin-bottom: 6px; display: block; }
+  textarea { width: 100%; flex: 1; min-height: 340px; height: calc(100vh - 220px);
+             padding: 12px; font-size: 15px; line-height: 1.6;
+             border: 1px solid #d0d7de; border-radius: 6px; resize: vertical; }
+  .field { margin-bottom: 14px; }
+  .side label { display: block; font-size: 13px; color: #57606a; margin-bottom: 4px; }
+  input[type=text], select { width: 100%; padding: 8px; font-size: 14px;
+         border: 1px solid #d0d7de; border-radius: 6px; }
+  input[type=range] { width: 100%; }
+  .val { font-weight: 600; color: #1f883d; }
+  button { width: 100%; margin-top: 4px; padding: 11px 0; font-size: 15px; border: none;
+           border-radius: 6px; background: #1f883d; color: #fff; cursor: pointer; }
+  button:disabled { background: #8c959f; cursor: wait; }
+  button.sec { margin-top: 8px; padding: 7px 0; font-size: 13px; background: #0969da; width: auto;
+               padding: 7px 14px; }
+  #result { margin-top: 14px; padding-top: 12px; border-top: 1px solid #d8dee4; display: none; }
+  #result audio { width: 100%; margin-bottom: 6px; }
+  .path { font-size: 12px; color: #57606a; word-break: break-all; }
+  #err { margin-top: 10px; color: #cf222e; display: none; white-space: pre-wrap; font-size: 13px; }
+  .hint { font-size: 12px; color: #8c959f; margin-top: 2px; }
+  @media (max-width: 920px) { .wrap { flex-direction: column; } .side { flex: 1; } }
+</style>
+</head>
+<body>
+<h1>📝 文本 → MP3（edge-tts 神经语音）</h1>
+
+<div class="wrap">
+  <div class="card main">
+    <label for="text">文本内容（粘贴要转音频的文字）</label>
+    <textarea id="text" placeholder="把要转音频的文本粘贴到这里（英文回答、中文均可）…"></textarea>
+  </div>
+
+  <div class="card side">
+    <div class="field">
+      <label for="voice">语音</label>
+      <select id="voice">
+        {% for label, vid in voices.items() %}
+        <option value="{{ vid }}" {% if vid == cfg.voice %}selected{% endif %}>{{ label }}</option>
+        {% endfor %}
+      </select>
+      <div class="hint">Ava / Emma 一代韵律最自然；音调怪可试下方微调</div>
+    </div>
+
+    <div class="field">
+      <label for="rate">语速 <span class="val" id="rateVal">{{ cfg.rate }}%</span></label>
+      <input type="range" id="rate" min="-30" max="30" step="5" value="{{ cfg.rate }}"
+             oninput="document.getElementById('rateVal').textContent = this.value + '%'">
+      <div class="hint">跟读练习建议 -10% ~ -20%</div>
+    </div>
+
+    <div class="field">
+      <label for="pitch">音调 <span class="val" id="pitchVal">{{ cfg.pitch }}Hz</span></label>
+      <input type="range" id="pitch" min="-20" max="20" step="5" value="{{ cfg.pitch }}"
+             oninput="document.getElementById('pitchVal').textContent = this.value + 'Hz'">
+      <div class="hint">声音发「怪」时 -5 ~ -10Hz 常常更顺耳</div>
+    </div>
+
+    <div class="field">
+      <label for="filename">文件名（留空自动按时间命名）</label>
+      <input type="text" id="filename" placeholder="如：话题1-为什么我要学英语">
+    </div>
+
+    <div class="field">
+      <label for="out_dir">输出文件夹（自动创建；本次选择会被记住）</label>
+      <input type="text" id="out_dir" value="{{ cfg.out_dir }}">
+    </div>
+
+    <button id="go" onclick="generate()">生成 MP3</button>
+    <div id="err"></div>
+
+    <div id="result">
+      <audio id="player" controls></audio>
+      <div class="path" id="path"></div>
+      <button class="sec" onclick="reveal()">📂 打开所在文件夹</button>
+    </div>
+  </div>
+</div>
+
+<script>
+async function generate() {
+  const $ = (id) => document.getElementById(id);
+  const body = {
+    text: $("text").value,
+    filename: $("filename").value,
+    voice: $("voice").value,
+    rate: Number($("rate").value),
+    pitch: Number($("pitch").value),
+    out_dir: $("out_dir").value,
+  };
+  $("go").disabled = true; $("go").textContent = "合成中…";
+  $("err").style.display = "none"; $("result").style.display = "none";
+  try {
+    const res = await fetch("/api/tts", {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    });
+    const data = await res.json();
+    if (!data.ok) throw new Error(data.error || "生成失败");
+    $("player").src = data.play;
+    $("path").textContent = "已保存：" + data.path;
+    $("result").style.display = "block";
+    $("player").play().catch(() => {});   // 浏览器拦截自动播放时不报错
+  } catch (e) {
+    $("err").textContent = "❌ " + e.message;
+    $("err").style.display = "block";
+  } finally {
+    $("go").disabled = false; $("go").textContent = "生成 MP3";
+  }
+}
+
+async function reveal() {
+  const path = document.getElementById("path").textContent.replace("已保存：", "");
+  await fetch("/api/reveal", {
+    method: "POST", headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ path }),
+  });
+}
+</script>
+</body>
+</html>

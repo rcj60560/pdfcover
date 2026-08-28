@@ -2,7 +2,7 @@
 import {
   parseBooks, parseTracks, sortTracks,
   cycleLoop, cycleSpeed, nextTrack, clampSeek, formatTime,
-  renderBookCard, renderTrackRow,
+  renderBookCard, renderTrackRow, renderLinkCard, topicsHref,
 } from "./core.js";
 
 const BOOKS = "books/"; // 相对页面：prod 解析为 /script/books/，本地为 /books/
@@ -58,6 +58,13 @@ async function loadHome() {
     }
     state.books = books;
     $("book-grid").innerHTML = books.map((b) => renderBookCard(b.name, b.tracks.length)).join("");
+    const href = topicsHref(location.hostname);   // 本机→8500；线上→/script/topics/；其余不显示
+    if (href) {
+      const sub = href === "topics/" ? "188 个话题" : "188 个话题 · 需先在面板启动";
+      $("book-grid").insertAdjacentHTML(
+        "beforeend",
+        renderLinkCard(href, "走遍美国口语话题", sub));
+    }
     if (!books.length) {
       msg.textContent = "暂无书目";
       msg.hidden = false;

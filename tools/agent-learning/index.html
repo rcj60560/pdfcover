@@ -1,0 +1,229 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Agent 学习路线</title>
+  <style>
+    :root{
+      --bg:#f5f5f7; --card:#fff; --line:#eee; --ink:#1d1d1f; --sub:#86868b;
+      --muted:#555; --accent:#3b82f6; --green:#2e7d32; --amber:#ef6c00;
+    }
+    *{box-sizing:border-box;}
+    body{font-family:-apple-system,"PingFang SC","Microsoft YaHei",sans-serif;
+         background:var(--bg);margin:0;padding:0;color:var(--ink);line-height:1.7;}
+    .wrap{max-width:880px;margin:0 auto;padding:32px 24px 80px;}
+    header{margin-bottom:8px;}
+    h1{font-size:28px;margin:0 0 6px;}
+    .lead{color:var(--sub);margin:0 0 6px;font-size:15px;}
+    .tags{display:flex;gap:8px;flex-wrap:wrap;margin-top:10px;}
+    .tag{font-size:12px;padding:3px 10px;border-radius:999px;background:#eef4ff;color:#1d4ed8;}
+    .tag.warn{background:#fff3e0;color:var(--amber);}
+
+    .progress{position:sticky;top:0;z-index:10;background:var(--bg);padding:14px 0;
+              border-bottom:1px solid var(--line);margin:18px -24px 24px;padding:14px 24px;}
+    .bar{height:8px;background:#e6e6ea;border-radius:999px;overflow:hidden;}
+    .bar > i{display:block;height:100%;width:0;background:var(--accent);transition:width .3s;}
+    .ptxt{font-size:13px;color:var(--sub);margin-top:6px;display:flex;justify-content:space-between;}
+
+    section{background:var(--card);border:1px solid var(--line);border-radius:16px;
+            padding:22px 24px;margin:18px 0;}
+    h2{font-size:19px;margin:0 0 14px;display:flex;align-items:center;gap:8px;}
+    h3{font-size:16px;margin:18px 0 8px;}
+    p{margin:8px 0;}
+    a{color:var(--accent);text-decoration:none;}
+    a:hover{text-decoration:underline;}
+    code{background:#f0f0f5;padding:1px 6px;border-radius:6px;font-size:13px;font-family:ui-monospace,Menlo,Consolas,monospace;}
+    pre{background:#1d1d1f;color:#e8e8ef;padding:14px 16px;border-radius:12px;overflow:auto;
+        font-size:13px;line-height:1.55;}
+    pre code{background:none;padding:0;color:inherit;}
+
+    table{width:100%;border-collapse:collapse;font-size:14px;margin:8px 0;}
+    th,td{text-align:left;padding:8px 10px;border-bottom:1px solid var(--line);vertical-align:top;}
+    th{color:var(--sub);font-weight:600;font-size:13px;}
+
+    .stage{border-left:3px solid var(--accent);padding-left:16px;margin:14px 0;}
+    .stage .when{font-size:12px;color:var(--sub);}
+    .stage h3{margin:2px 0 4px;}
+    ul.task{list-style:none;padding:0;margin:8px 0;}
+    ul.task li{padding:6px 0;display:flex;gap:10px;align-items:flex-start;font-size:14.5px;}
+    input[type=checkbox]{width:17px;height:17px;margin-top:3px;accent-color:var(--accent);flex:none;}
+    .done{color:var(--sub);text-decoration:line-through;}
+    .pill{font-size:11px;padding:2px 8px;border-radius:6px;background:#e8f5e9;color:var(--green);margin-left:6px;}
+    .pill.py{background:#fff3e0;color:var(--amber);}
+
+    .repos td:first-child{font-weight:600;}
+    .step{background:#eef4ff;border:none;}
+    .step ol{margin:8px 0;padding-left:22px;}
+    .step li{margin:6px 0;}
+    .muted{color:var(--sub);font-size:13px;}
+    footer{color:var(--sub);font-size:13px;text-align:center;margin-top:32px;}
+    .row-btn{display:flex;gap:10px;flex-wrap:wrap;margin-top:14px;}
+    button{border:1px solid #d2d2d7;background:#fff;border-radius:10px;padding:9px 16px;font-size:14px;cursor:pointer;}
+    button.primary{background:var(--accent);color:#fff;border-color:var(--accent);}
+  </style>
+</head>
+<body>
+<div class="wrap">
+
+  <header>
+    <h1>🤖 Agent 学习路线</h1>
+    <p class="lead">零基础 → 转行做 LLM Agent 开发。默认走「应用工程」线（用 API + 框架做产品），现实且就业面广；算法/训练线门槛高，以后想深入再补。</p>
+    <div class="tags">
+      <span class="tag">主线：Agent 开发</span>
+      <span class="tag warn">副线：Python 够用即可（能看懂报错、改代码）</span>
+      <span class="tag">目标：转行</span>
+    </div>
+  </header>
+
+  <div class="progress">
+    <div class="bar"><i id="bar"></i></div>
+    <div class="ptxt"><span id="ptxt">学习进度</span><span><a href="#" id="reset">清空进度</a></span></div>
+  </div>
+
+  <!-- 0. 词汇 -->
+  <section>
+    <h2>① 先过一遍「概念词汇」</h2>
+    <p class="muted">新手最大的卡点就是看不懂词。先把这张表抄进 <code>notes/00-概念词汇.md</code>，每个花 5 分钟查懂——不用很深，知道是什么、解决什么问题就行。别等"全懂了"才开始。</p>
+    <table>
+      <tr><th>概念</th><th>一句话</th></tr>
+      <tr><td><b>LLM</b></td><td>大语言模型，Agent 的"大脑"</td></tr>
+      <tr><td><b>Prompt / Token / Context</b></td><td>提示词 / 计费单位 / 上下文窗口（模型一次能看多少字）</td></tr>
+      <tr><td><b>Function / Tool Calling</b></td><td>让模型能"调用函数/工具"（查天气、查数据库）—— <b>Agent 的核心</b></td></tr>
+      <tr><td><b>Agent Loop</b></td><td>"思考→调用工具→看结果→再思考"的循环，Agent 就是这个循环</td></tr>
+      <tr><td><b>RAG</b></td><td>检索增强生成，让模型读你自己的文档再回答</td></tr>
+      <tr><td><b>Embedding / 向量数据库</b></td><td>把文字变成数字做"相似度搜索"，RAG 的底层</td></tr>
+      <tr><td><b>Memory</b></td><td>Agent 怎么跨对话记住事情</td></tr>
+      <tr><td><b>MCP</b></td><td>模型上下文协议，让 Agent 接外部工具的通用标准</td></tr>
+      <tr><td><b>LangChain / LlamaIndex</b></td><td>主流开发框架（封装了上面这些东西）</td></tr>
+    </table>
+  </section>
+
+  <!-- 1. 路线 -->
+  <section>
+    <h2>② 分阶段学习路线</h2>
+    <p class="muted">主线是 Agent，Python 是"够用就行"的副线。勾选进度会自动保存（仅本浏览器）。</p>
+
+    <div class="stage">
+      <div class="when">第 1–2 周 · 上手感</div>
+      <h3>阶段 1：让概念"活"起来</h3>
+      <ul class="task">
+        <li><input type="checkbox" data-k="p1-py"><div><span class="pill py">Python</span> 学 <a target="_blank" href="https://github.com/jackfrued/Python-100-Days">Python-100-Days</a> 的 <b>Day01–Day15</b>（变量/分支/循环/函数/列表字典/字符串/文件读写/try-except）。够看懂 90% 报错就停下，别恋战。</div></li>
+        <li><input type="checkbox" data-k="p1-api"><div>注册一个模型 API（国内可用 <a target="_blank" href="https://siliconflow.cn">硅基流动</a> / 智谱，或 OpenRouter），拿到 API Key。</div></li>
+        <li><input type="checkbox" data-k="p1-hello"><div>用 Python 发第一条请求，让 LLM 回你一句话。运行 <code>code/01-hello-llm.py</code>。</div></li>
+      </ul>
+    </div>
+
+    <div class="stage">
+      <div class="when">第 3–5 周 · 核心机制</div>
+      <h3>阶段 2：搞懂 Agent 怎么"动"</h3>
+      <ul class="task">
+        <li><input type="checkbox" data-k="p2-prompt"><div>Prompt 工程：少样本、角色设定、结构化输出。</div></li>
+        <li><input type="checkbox" data-k="p2-tool"><div>Function / Tool Calling：让模型决定调用哪个函数、传什么参数。</div></li>
+        <li><input type="checkbox" data-k="p2-rag"><div>手撕一个 Naive RAG：切块 → embedding → 相似度检索 → 拼 prompt。</div></li>
+        <li><input type="checkbox" data-k="p2-lc"><div>跟着 <a target="_blank" href="https://github.com/adongwanai/AgentGuide">AgentGuide</a> 的 <a target="_blank" href="https://github.com/adongwanai/AgentGuide/blob/main/docs/05-roadmaps/learning-roadmap-development.md">开发岗路线</a> 走，理解 LangChain 核心概念。</div></li>
+      </ul>
+    </div>
+
+    <div class="stage">
+      <div class="when">第 6–8 周 · 动手</div>
+      <h3>阶段 3：从零写一个 Agent</h3>
+      <ul class="task">
+        <li><input type="checkbox" data-k="p3-loop"><div>理解 Agent Loop：写一个 while 循环，让模型反复"调用工具 → 看结果 → 继续"。</div></li>
+        <li><input type="checkbox" data-k="p3-mem"><div>加上 Memory：把历史对话存起来塞进下次请求。</div></li>
+        <li><input type="checkbox" data-k="p3-zero"><div>跟着 <a target="_blank" href="https://github.com/didilili/ai-agents-from-zero">ai-agents-from-zero</a> 从零搭一个迷你 Agent 框架。亲手写一遍 > 看十遍。</div></li>
+      </ul>
+    </div>
+
+    <div class="stage">
+      <div class="when">第 9 周起 · 出作品</div>
+      <h3>阶段 4：做一个完整小项目</h3>
+      <ul class="task">
+        <li><input type="checkbox" data-k="p4-pick"><div>选题（任选一）：个人知识库助手 / 自动总结网页 / 命令行小助手 / RSS 摘要机器人。</div></li>
+        <li><input type="checkbox" data-k="p4-ship"><div>做完能跑，写进 README 截图发出来。<b>有项目才有转行的资本。</b></div></li>
+      </ul>
+    </div>
+  </section>
+
+  <!-- 2. 仓库 -->
+  <section>
+    <h2>③ 精选仓库（别贪多，就这几个）</h2>
+    <table class="repos">
+      <tr><th>用途</th><th>仓库</th><th>语言</th></tr>
+      <tr><td>🎯 主路线（照着走）</td><td><a target="_blank" href="https://github.com/adongwanai/AgentGuide">AgentGuide</a></td><td>中文</td></tr>
+      <tr><td>🔧 从零写 Agent</td><td><a target="_blank" href="https://github.com/didilili/ai-agents-from-zero">ai-agents-from-zero</a></td><td>中文</td></tr>
+      <tr><td>📺 权威入门</td><td><a target="_blank" href="https://github.com/microsoft/ai-agents-for-beginners">microsoft/ai-agents-for-beginners</a></td><td>英文</td></tr>
+      <tr><td>🗺 路线图总览</td><td><a target="_blank" href="https://roadmap.sh/ai-agents">roadmap.sh/ai-agents</a></td><td>英文</td></tr>
+      <tr><td>🐍 Python 副线</td><td><a target="_blank" href="https://github.com/jackfrued/Python-100-Days">Python-100-Days</a>（只学前 15 天）</td><td>中文</td></tr>
+      <tr><td>📚 资料汇总</td><td><a target="_blank" href="https://github.com/datawhalechina/Agent-Learning-Hub">Agent-Learning-Hub</a></td><td>中文</td></tr>
+    </table>
+  </section>
+
+  <!-- 3. 结构 -->
+  <section>
+    <h2>④ 这个项目怎么用（本地学习 + 跑代码）</h2>
+    <p>你已经在 <code>tools/agent-learning/</code> 里了，目录长这样：</p>
+<pre><code>tools/agent-learning/
+├── index.html          ← 你正在看的这个学习主页
+├── dev_server.py       ← 托管本页面的本地服务器（:7000）
+├── README.md           ← 学习日志：今天学了啥、卡在哪、明天干嘛
+├── notes/              ← 概念笔记（markdown）
+│   └── 00-概念词汇.md   ← 第一篇笔记（已建好）
+├── code/               ← 跟练代码，一个文件一个知识点
+│   └── 01-hello-llm.py ← 第一段：调 API 让模型说话（已建好）
+└── cheatsheet/         ← 报错速查 / 常用片段
+    └── 常见报错.md       ← 每遇报错就往这里加一条</code></pre>
+    <p class="muted">💡 关键习惯：每遇到一个看不懂的报错，就往 <code>cheatsheet/常见报错.md</code> 加一条（报错原文 + 原因 + 怎么修）。这是 Python 副线最高效的学法——<b>以报错驱动</b>，而不是啃教材。</p>
+    <p class="muted">📖 笔记和报错文件都能在浏览器直接看：<a href="notes/00-概念词汇.md">notes/00-概念词汇.md</a> · <a href="cheatsheet/常见报错.md">cheatsheet/常见报错.md</a></p>
+  </section>
+
+  <!-- 4. 第一步 -->
+  <section class="step">
+    <h2>⑤ 今天的「第一步」</h2>
+    <ol>
+      <li>打开 <code>README.md</code>，写一行今天的目标。</li>
+      <li>把第一节词汇表抄进 <code>notes/00-概念词汇.md</code>，逐个查懂。</li>
+      <li>填好 <code>code/01-hello-llm.py</code> 里的 <code>API_KEY</code>，运行它看到模型回话。</li>
+      <li>去 <a target="_blank" href="https://github.com/jackfrued/Python-100-Days">Python-100-Days</a> 看 Day01，在 <code>code/</code> 里敲一遍。</li>
+    </ol>
+    <div class="row-btn">
+      <button class="primary" onclick="window.open('code/01-hello-llm.py','_blank')">查看第一段代码</button>
+      <button onclick="window.open('README.md','_blank')">打开学习日志</button>
+    </div>
+  </section>
+
+  <footer>
+    my-toolkit / agent-learning · 学习进度仅保存在本浏览器 ·
+    <a href="/" target="_blank">← 返回工具箱面板</a>
+  </footer>
+</div>
+
+<script>
+(function(){
+  var KEY='agent-learning-progress';
+  var boxes=Array.prototype.slice.call(document.querySelectorAll('input[type=checkbox]'));
+  function load(){ try{return JSON.parse(localStorage.getItem(KEY)||'{}');}catch(e){return {};} }
+  function save(o){ localStorage.setItem(KEY,JSON.stringify(o)); }
+  function refresh(){
+    var st=load();
+    var done=0;
+    boxes.forEach(function(b){
+      var on=!!st[b.dataset.k]; b.checked=on;
+      var d=b.parentElement.querySelector('div'); if(d) d.classList.toggle('done',on);
+      if(on) done++;
+    });
+    var pct = boxes.length? Math.round(done*100/boxes.length):0;
+    document.getElementById('bar').style.width=pct+'%';
+    document.getElementById('ptxt').textContent='学习进度 '+done+' / '+boxes.length+'（'+pct+'%）';
+  }
+  boxes.forEach(function(b){
+    b.addEventListener('change',function(){ var st=load(); st[b.dataset.k]=b.checked; save(st); refresh(); });
+  });
+  document.getElementById('reset').addEventListener('click',function(e){
+    e.preventDefault(); if(confirm('清空所有学习进度？')){ localStorage.removeItem(KEY); refresh(); }
+  });
+  refresh();
+})();
+</script>
+</body>
+</html>

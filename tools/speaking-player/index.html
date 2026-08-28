@@ -1,0 +1,49 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>口语跟读</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <header>
+    <button id="back-btn" hidden>←</button>
+    <h1 id="view-title">🎧 口语跟读</h1>
+  </header>
+
+  <!-- 曲目列表 -->
+  <main id="home-view">
+    <ul id="track-list"></ul>
+    <p id="home-msg" hidden></p>
+  </main>
+
+  <!-- 跟读页 -->
+  <main id="player-view" hidden>
+    <div id="subtitle-panel">
+      <p id="sentence"></p>
+      <p id="translation" hidden></p>
+      <p id="no-sub-msg" hidden>（无字幕：该曲目没有 timeline json）</p>
+    </div>
+    <div id="controls">
+      <button id="prev-sent" title="上一句">⏮</button>
+      <button id="play" title="播放/暂停">▶</button>
+      <button id="next-sent" title="下一句">⏭</button>
+      <button id="replay-sent" title="单句重播">↺</button>
+      <button id="loop-sent" title="单句循环（与逐句互斥）">🔁</button>
+      <button id="sent-mode" title="逐句模式：句尾停顿后自动播下一句（与循环互斥）">逐句</button>
+      <button id="gap" title="逐句模式的句间停顿：点击切换 1s/2s/3s/5s">2s</button>
+      <button id="speed" title="倍速">1x</button>
+      <button id="zh" title="中文翻译">译</button>
+    </div>
+    <div id="progress">
+      <span id="cur-time">0:00</span>
+      <input type="range" id="seek" min="0" max="1000" value="0">
+      <span id="dur-time">0:00</span>
+    </div>
+    <audio id="audio" preload="metadata"></audio>
+  </main>
+
+  <script type="module" src="app.js"></script>
+</body>
+</html>

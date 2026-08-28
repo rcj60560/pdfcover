@@ -101,6 +101,32 @@ export function renderBookCard(name, count) {
   );
 }
 
+// 外链卡片（如跳转到本机其他工具页）：与书卡同构，但为 <a> 新页签打开。
+export function renderLinkCard(href, title, sub) {
+  const first = [...String(title)][0] || "?";
+  const color = colorFor(String(title));
+  return (
+    `<a class="card" href="${esc(href)}" target="_blank" rel="noopener" style="--card-color:${color};text-decoration:none">` +
+    `<span class="card-cover" style="background:${color}">${esc(first)}</span>` +
+    `<span class="card-title">${esc(title)}</span>` +
+    `<span class="card-count">${esc(sub)}</span>` +
+    `</a>`
+  );
+}
+
+// 仅本机访问时展示指向 127.0.0.1 其他工具的卡片（线上/局域网手机访问不显示死链）。
+export function isLocalHost(hostname) {
+  return hostname === "127.0.0.1" || hostname === "localhost";
+}
+
+// 「走遍美国口语话题」卡片地址：本机 → 本地工具(8500)；线上站 → 相对部署路径；
+// 其余（局域网手机等）→ null 不显示。线上 IP 与部署路径需与 ielts-topics 同步脚本一致。
+export function topicsHref(hostname) {
+  if (isLocalHost(hostname)) return "http://127.0.0.1:8500";
+  if (hostname === "47.108.230.162") return "topics/";
+  return null;
+}
+
 export function renderTrackRow(name, index, isCurrent) {
   const normalized = String(name).match(/^T(\d+)(?:-P(\d+))?\.mp3$/i);
   const fallback = String(name).match(/(\d+)/);

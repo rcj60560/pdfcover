@@ -1,0 +1,24 @@
+{"results": [
+  {"month": "January", "monthNo": 1, "tournaments": [
+    {"prize_money": "1,450,000", "start_date": "2026-01-06 00:00:00", "end_date": "2026-01-11 00:00:00",
+     "name": "PETRONAS Malaysia Open 2026", "location": "Kuala Lumpur, Malaysia", "country": "Malaysia",
+     "category": "HSBC BWF World Tour Super 1000"},
+    {"prize_money": "-", "start_date": "2026-01-20 00:00:00", "end_date": "2026-01-25 00:00:00",
+     "name": "Some International Challenge", "location": "Nowhere, Earth", "country": "Earth",
+     "category": "BWF International Challenge"}
+  ]},
+  {"month": "August", "monthNo": 8, "tournaments": [
+    {"prize_money": null, "start_date": "2026-08-17 00:00:00", "end_date": "2026-08-23 00:00:00",
+     "name": "BWF World Championships 2026", "location": "New Delhi, India", "country": "India",
+     "category": "Grade 1 – Individual Tournaments", "code": "B671FB97-491C-46D3-982F-56525168C3AA",
+     "id": 5601, "has_live_scores": true},
+    {"prize_money": null, "start_date": "2026-10-11 00:00:00", "end_date": "2026-10-17 00:00:00",
+     "name": "VICTOR BWF World Junior Championships 2026", "location": "Cairo, Egypt", "country": "Egypt",
+     "category": "Grade 1 – Individual Junior Tournaments"}
+  ]},
+  {"month": "December", "monthNo": 12, "tournaments": [
+    {"prize_money": "3,500,000", "start_date": "2026-12-09 00:00:00", "end_date": "2026-12-13 00:00:00",
+     "name": "HSBC BWF World Tour Finals 2026", "location": "Hangzhou, China", "country": "China",
+     "category": "HSBC BWF World Tour Finals"}
+  ]}
+]}

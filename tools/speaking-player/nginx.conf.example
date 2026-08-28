@@ -1,0 +1,15 @@
+# ===== 口语跟读播放器 nginx 配置示例 =====
+# 服务器实际操作（宝塔）：把下面两个 location 存为
+# /www/server/panel/vhost/nginx/extension/47.108.230.162/speaking.conf
+# 然后：nginx -t && nginx -s reload
+
+location /script/speaking/ {
+    alias /www/wwwroot/47.108.230.162/script/speaking/;
+    autoindex off;
+}
+
+location /script/speaking/tracks/ {
+    alias /www/wwwroot/47.108.230.162/script/speaking/tracks/;
+    autoindex on;
+    autoindex_format json;
+}
