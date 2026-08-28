@@ -58,3 +58,9 @@ tools/speaking-player/fixtures/tracks/*
 # OS
 .DS_Store
 Thumbs.db
+
+# 走遍美国台词提取中间产物（体积大，不入库；源 xls 已在库）
+scripts/out/
+
+# bwf-data 本地抓取输出
+tools/bwf-data/out/
