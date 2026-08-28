@@ -19,6 +19,12 @@ cd tools/ielts-topics && python dev_server.py          # http://127.0.0.1:8500
 python dev_server.py --lan                              # 手机同 Wi-Fi 访问
 ```
 
+## 部署与同步
+
+见 sync_topics.py（前端 + topics.json 一键上服务器）与 nginx.conf.example（一次性 location 配置）。
+线上：http://47.108.230.162/script/topics/
+音频播放器书库页（本机/线上）会显示跳转卡片（audio-player/core.js 的 topicsHref 按环境指向本地 8500 或线上路径）。
+
 ## 测试
 
 ```bash

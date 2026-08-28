@@ -7,3 +7,6 @@ status = "ready"
 cmd = ["python", "dev_server.py"]
 port = 8500
 url = "http://127.0.0.1:8500"
+
+[links]
+live = "http://47.108.230.162/script/topics/"

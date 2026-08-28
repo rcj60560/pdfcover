@@ -4,6 +4,7 @@ import {
   parseBooks, parseTracks, sortTracks,
   cycleLoop, cycleSpeed, nextTrack, clampSeek,
   formatTime, renderBookCard, renderTrackRow,
+  renderLinkCard, isLocalHost, topicsHref,
 } from "../core.js";
 
 test("parseBooks keeps directories only", () => {
@@ -121,4 +122,28 @@ test("renderBookCard escapes special chars", () => {
   const html = renderBookCard('a"<b>', 1);
   assert.doesNotMatch(html, /data-book="a"<b>"/); // 引号被转义，不破坏属性
   assert.match(html, /&quot;/);
+});
+
+test("renderLinkCard 外链卡片：新页签 + 转义", () => {
+  const html = renderLinkCard("http://127.0.0.1:8500", '走遍美国<口语>', "188 个话题");
+  assert.match(html, /href="http:\/\/127\.0\.0\.1:8500"/);
+  assert.match(html, /target="_blank"/);
+  assert.match(html, /rel="noopener"/);
+  assert.match(html, /&lt;口语&gt;/);          // 标题转义
+  assert.doesNotMatch(html, /<口语>/);
+  assert.match(html, /188 个话题/);
+});
+
+test("isLocalHost 仅本机地址显示外链卡片", () => {
+  assert.equal(isLocalHost("127.0.0.1"), true);
+  assert.equal(isLocalHost("localhost"), true);
+  assert.equal(isLocalHost("192.168.1.5"), false);   // --lan 手机访问也不显示
+  assert.equal(isLocalHost("47.108.230.162"), false);
+});
+
+test("topicsHref 按访问环境返回话题工具地址", () => {
+  assert.equal(topicsHref("127.0.0.1"), "http://127.0.0.1:8500");   // 本机 → 本地工具
+  assert.equal(topicsHref("localhost"), "http://127.0.0.1:8500");
+  assert.equal(topicsHref("47.108.230.162"), "topics/");            // 线上 → 部署路径（相对 /script/）
+  assert.equal(topicsHref("192.168.1.5"), null);                    // 局域网手机 → 不显示
 });
