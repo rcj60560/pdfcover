@@ -1,4 +1,4 @@
-# my-toolkit 工具箱 · 项目导读（2026-08-19）
+# my-toolkit 工具箱 · 项目导读（2026-09-01）
 
 > 给后续会话（人或 AI）的快速上手文档：这个仓库是什么、怎么跑、怎么加东西。
 > 历史细节见文末「变更记录」。
@@ -36,6 +36,7 @@ docs/                  本文档 + superpowers/{specs,plans} 设计/计划文档
 | bwf-data | 羽联数据 | — | `python run_all.py` | BWF 排名/赛程抓取→发布（批处理，无网页） |
 | text2mp3 | 文本转语音 MP3 | 8300 | `python app.py` | 粘贴文本→edge-tts→MP3（新一代 Ava/Emma 语音 + 音调微调），默认存 IELTS 笔记库口语回答/音频；另有 `tts_cli.py` 供自动化 |
 | speaking-player | 口语跟读播放器 | 8400 | `python dev_server.py` | MP3+timeline json 卡拉OK逐词高亮跟读；sync_speaking.py 一键上服务器 |
+| bilibili-subtitles | B站双语字幕 | 8600 | `python app.py` | 提取 B 站字幕轨、按时间轴生成中英对照，导出 Markdown / Excel |
 | word2md / dics | （占位） | — | — | planned，面板置灰 |
 
 ## 加新工具（3 步，无需改 launcher）
@@ -48,7 +49,7 @@ docs/                  本文档 + superpowers/{specs,plans} 设计/计划文档
 
 ## 约定（AI 会话开发前速读）
 
-- **端口分配**：面板 5500；工具 5000 / 7000 / 8000 / 8300 / 8400 已占，新工具挑没用的。
+- **端口分配**：面板 5500；工具 5000 / 7000 / 8000 / 8300 / 8400 / 8500 / 8600 已占，新工具挑没用的。
 - **测试**：根 `pytest` 一把跑全部；根 tests/ 导入工具代码用 `sys.path.insert(0, .../tools/<工具>)`（见 `tests/test_bwf_preview.py`、`tests/test_text2mp3.py`）。跨工具依赖网络/重进程的不进单测。
 - **TDD/流程**：本仓库用 superpowers 工作流，设计/计划文档在 `docs/superpowers/{specs,plans}`，命名 `YYYY-MM-DD-<主题>-{design,plan}.md`。
 - **工具自包含**：web 工具两种风格都行——stdlib `http.server`（audio-player）或 Flask（text2mp3、pdf-ocr web）；依赖多就给工具配 `requirements.txt` 或独立 pyproject。
@@ -61,6 +62,7 @@ docs/                  本文档 + superpowers/{specs,plans} 设计/计划文档
 
 ## 变更记录
 
+- **2026-09-01**：新增 `bilibili-subtitles`（B站字幕提取→中英时间轴对齐→Markdown/Excel，:8600）。
 - **2026-08-19**：新增 `speaking-player`（卡拉OK 跟读播放器，:8400）；text2mp3 升级为 MP3+timeline json 双落地。
 - **2026-08-19**：新增 `text2mp3`（文本→edge-tts→MP3，:8300），根 README 工具表补全（agent-learning、bwf-data），本文档改为「项目导读」并新增 AI 会话约定章节。
 - **2026-07-31**：pdfcover/audioplayer `git mv` 搬入 `tools/`（历史保留）；launcher（manifest+probe+processes+面板）TDD 完成；顶层 README/pyproject/run 脚本就位；测试全绿（launcher 4 + pdfcover 54 + audioplayer 19）。

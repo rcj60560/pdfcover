@@ -1,0 +1,110 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>B站双语字幕 · my-toolkit</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+  <div class="ambient ambient-one"></div>
+  <div class="ambient ambient-two"></div>
+  <main class="shell">
+    <header class="hero">
+      <div class="eyebrow">MY TOOLKIT · LANGUAGE LAB</div>
+      <h1>B站视频，变成一份<br><span>好读的双语字幕。</span></h1>
+      <p>手机挂着听，电脑沿时间轴看英文原句和中文对照。只提取字幕，不下载视频。</p>
+    </header>
+
+    <section class="panel source-panel" aria-labelledby="source-heading">
+      <div class="step-title">
+        <span class="step-num">01</span>
+        <div><h2 id="source-heading">读取视频字幕</h2><p>粘贴视频页、短链，或直接输入 BV 号</p></div>
+      </div>
+      <form id="inspect-form">
+        <div class="url-row">
+          <label class="sr-only" for="video-url">B站视频链接</label>
+          <input id="video-url" name="url" type="text" autocomplete="off"
+                 placeholder="https://www.bilibili.com/video/BV..." required>
+          <button class="primary" id="inspect-button" type="submit">
+            <span>读取字幕</span><span aria-hidden="true">→</span>
+          </button>
+        </div>
+        <div class="login-row">
+          <label for="browser">登录状态</label>
+          <select id="browser" name="browser">
+            <option value="none">先不读取（推荐先试）</option>
+            <option value="edge">读取 Edge 登录状态</option>
+            <option value="chrome">读取 Chrome 登录状态</option>
+            <option value="firefox">读取 Firefox 登录状态</option>
+          </select>
+          <span class="privacy">仅由本机 yt-dlp 读取；不会保存 Cookie</span>
+        </div>
+      </form>
+      <div id="status" class="status" role="status" aria-live="polite" hidden></div>
+    </section>
+
+    <section class="panel tracks-panel" id="tracks-panel" aria-labelledby="tracks-heading" hidden>
+      <div class="step-title">
+        <span class="step-num">02</span>
+        <div><h2 id="tracks-heading">选择中英文轨道</h2><p>已按字幕内容自动推荐；分段不一致时会按时间轴对齐</p></div>
+      </div>
+      <div class="video-meta">
+        <div class="video-mark">BV</div>
+        <div class="video-copy">
+          <a id="video-title" target="_blank" rel="noreferrer"></a>
+          <p id="video-detail"></p>
+        </div>
+      </div>
+      <div id="track-chips" class="track-chips"></div>
+      <div id="warnings" class="warnings" hidden></div>
+      <div class="track-grid">
+        <label>
+          <span>English</span>
+          <select id="english-track"></select>
+        </label>
+        <div class="pair-symbol" aria-hidden="true">↔</div>
+        <label>
+          <span>中文</span>
+          <select id="chinese-track"></select>
+        </label>
+      </div>
+      <button class="primary generate" id="generate-button" type="button">生成对照字幕</button>
+    </section>
+
+    <section id="reader" class="reader" aria-labelledby="reader-title" hidden>
+      <div class="reader-head">
+        <div>
+          <div class="eyebrow">READING VIEW</div>
+          <h2 id="reader-title">中英对照字幕</h2>
+          <p id="reader-summary"></p>
+        </div>
+        <div class="export-row">
+          <a class="export md" id="download-md">下载 Markdown</a>
+          <a class="export xlsx" id="download-xlsx">下载 Excel</a>
+        </div>
+      </div>
+      <div id="reader-notice" class="notice" hidden></div>
+      <div class="reader-toolbar">
+        <label class="search-wrap">
+          <span aria-hidden="true">⌕</span>
+          <input id="subtitle-search" type="search" placeholder="搜索英文或中文">
+        </label>
+        <div class="font-tools" aria-label="字号调整">
+          <button id="font-smaller" type="button" title="减小字号">A−</button>
+          <button id="font-larger" type="button" title="增大字号">A+</button>
+        </div>
+        <button class="copy-button" id="copy-md" type="button">复制 Markdown</button>
+      </div>
+      <div id="subtitle-list" class="subtitle-list"></div>
+      <div id="no-match" class="no-match" hidden>没有匹配的字幕</div>
+      <button id="to-top" class="to-top" type="button">回到顶部 ↑</button>
+    </section>
+
+    <footer>
+      <strong>说明</strong> · 当前版本读取视频自带/AI 字幕轨，不对画面烧录字幕做 OCR，也不下载视频或音频。
+    </footer>
+  </main>
+  <script src="{{ url_for('static', filename='app.js') }}" defer></script>
+</body>
+</html>

@@ -64,3 +64,7 @@ scripts/out/
 
 # bwf-data 本地抓取输出
 tools/bwf-data/out/
+
+# B站字幕本地产物 / 可选 Whisper 模型
+tools/bilibili-subtitles/outputs/
+tools/bilibili-subtitles/.models/
