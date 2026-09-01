@@ -16,7 +16,15 @@ sys.path.insert(0, str(BASE))
 import subtitle_core as core  # noqa: E402
 from extractor import collect_tracks  # noqa: E402
 from xlsx_export import build_xlsx  # noqa: E402
-from direct_generate import apply_translations, merge_captions  # noqa: E402
+from direct_generate import (  # noqa: E402
+    apply_translations,
+    fill_missing_languages,
+    join_parts,
+    merge_captions,
+    split_for_limit,
+    split_methods,
+    translate_texts,
+)
 
 
 def cue(start, end, text):
@@ -95,6 +103,133 @@ def test_build_rows_from_same_bilingual_track():
     track = core.SubtitleTrack("x", "zh-CN", "双语", "manual", "bilingual", captions)
     rows = core.build_bilingual_rows(track, track)
     assert rows == [core.BilingualRow(0, 2, "Welcome home.", "欢迎回家。")]
+
+
+def test_split_for_limit_keeps_short_text_whole():
+    assert split_for_limit("Short one.", 480) == ["Short one."]
+
+
+def test_split_for_limit_chunks_long_text_at_sentence_bounds():
+    text = "First sentence here. Second one follows! Third, short. "
+    chunks = split_for_limit(text, 25)
+    assert all(len(chunk) <= 25 for chunk in chunks)
+    assert len(chunks) > 1
+    assert "".join(chunks) == text
+
+
+def test_split_for_limit_hard_splits_unsplittable_text():
+    text = "很" * 1200
+    chunks = split_for_limit(text, 480)
+    assert all(len(chunk) <= 480 for chunk in chunks)
+    assert "".join(chunks) == text
+
+
+def test_join_parts_is_cjk_aware():
+    assert join_parts(["Hello.", "World."]) == "Hello. World."
+    assert join_parts(["你好。", "世界。"]) == "你好。世界。"
+
+
+def test_translate_texts_falls_back_when_first_backend_unreachable():
+    def broken(_text):
+        raise RuntimeError("no network")
+
+    def working(text):
+        return f"译[{text}]"
+
+    translations, label = translate_texts(
+        ["a", "b"], "en", "zh-CN",
+        backends=[("Google", broken, 4500), ("MyMemory", working, 480)],
+        retries=1, retry_sleep=0,
+    )
+    assert translations == ["译[a]", "译[b]"]
+    assert label == "MyMemory"
+
+
+def test_translate_texts_switches_backend_mid_run():
+    calls = {"flaky": 0}
+
+    def flaky(_text):
+        calls["flaky"] += 1
+        if calls["flaky"] > 1:
+            raise RuntimeError("died mid-run")
+        return "一"
+
+    def working(_text):
+        return "二"
+
+    translations, label = translate_texts(
+        ["a", "b", "c"], "en", "zh-CN",
+        backends=[("G", flaky, 100), ("M", working, 100)],
+        retries=1, retry_sleep=0,
+    )
+    assert translations == ["一", "二", "二"]
+    assert label == "G / M"
+
+
+def test_translate_texts_chunks_texts_over_backend_limit():
+    calls = []
+
+    def working(text):
+        calls.append(text)
+        return "句。"
+
+    long_text = "Sentence one here. " * 30
+    translations, _label = translate_texts(
+        [long_text], "en", "zh-CN",
+        backends=[("X", working, 100)],
+        retries=1, retry_sleep=0,
+    )
+    assert len(calls) > 1 and all(len(call) <= 100 for call in calls)
+    assert "".join(calls) == long_text
+    assert translations == ["句。" * len(calls)]
+
+
+def test_translate_texts_raises_when_all_backends_fail():
+    def broken(_text):
+        raise RuntimeError("down")
+
+    with pytest.raises(RuntimeError, match="翻译后端"):
+        translate_texts(
+            ["a"], "en", "zh-CN",
+            backends=[("G", broken, 100), ("M", broken, 100)],
+            retries=1, retry_sleep=0,
+        )
+
+
+def test_fill_missing_languages_reports_backend_label():
+    def working(text):
+        return "你好。"
+
+    rows = [core.BilingualRow(0, 2, "Hello.", "")]
+    filled, methods = fill_missing_languages(rows, backends=[("MyMemory", working, 480)])
+    assert filled[0].chinese == "你好。"
+    assert methods and "MyMemory" in methods[0] and "机器翻译" in methods[0]
+
+
+def test_build_backends_skips_unreachable_google(monkeypatch):
+    pytest.importorskip("deep_translator")
+    import direct_generate
+
+    monkeypatch.setattr(direct_generate, "_google_reachable", lambda timeout=3.0: False)
+    backends = direct_generate._build_backends("en", "zh-CN")
+    assert [backend[0] for backend in backends] == ["MyMemory"]
+
+    monkeypatch.setattr(direct_generate, "_google_reachable", lambda timeout=3.0: True)
+    backends = direct_generate._build_backends("en", "zh-CN")
+    assert [backend[0] for backend in backends] == ["Google Translate", "MyMemory"]
+
+
+def test_split_methods_separates_language_labels():
+    methods = [
+        "English：faster-whisper small.en 机器识别",
+        "中文：MyMemory 机器翻译",
+        "English：faster-whisper small.en 机器识别",  # 重复项应被去重
+    ]
+    assert split_methods(methods) == (
+        "faster-whisper small.en 机器识别",
+        "MyMemory 机器翻译",
+    )
+    assert split_methods([]) == ("", "")
 
 
 def test_collect_tracks_ignores_danmaku_and_deduplicates():

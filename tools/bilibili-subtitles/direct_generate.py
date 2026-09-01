@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import argparse
 import os
+import re
 import sys
 import tempfile
 import time
@@ -73,69 +74,213 @@ def apply_translations(
     return result
 
 
+_SENTENCE_ENDERS = ".!?。！？；;"
+_CJK_TAIL = re.compile(r"[一-鿿。！？；：、）】]$")
+Backend = tuple[str, Callable[[str], str], int]
+
+
+def _iter_sentences(text: str):
+    buffer: list[str] = []
+    for char in text:
+        buffer.append(char)
+        if char in _SENTENCE_ENDERS:
+            yield "".join(buffer)
+            buffer = []
+    if buffer:
+        yield "".join(buffer)
+
+
+def _hard_split(piece: str, limit: int) -> list[str]:
+    """单句仍超长时的兜底切分：先按空格词切，再不行按字符切。"""
+    if len(piece) <= limit:
+        return [piece]
+    parts: list[str] = []
+    current = ""
+    for word in piece.split(" "):
+        if len(word) > limit:
+            if current:
+                parts.append(current)
+                current = ""
+            parts.extend(word[start : start + limit] for start in range(0, len(word), limit))
+        elif current and len(current) + 1 + len(word) > limit:
+            parts.append(current)
+            current = word
+        else:
+            current = f"{current} {word}" if current else word
+    if current:
+        parts.append(current)
+    return parts
+
+
+def split_for_limit(text: str, limit: int) -> list[str]:
+    """按句子边界把长文本切成不超过 limit 的分片（"" 拼接可还原原文）。"""
+    if len(text) <= limit:
+        return [text]
+    chunks: list[str] = []
+    current = ""
+    for sentence in _iter_sentences(text):
+        if len(sentence) > limit:
+            if current:
+                chunks.append(current)
+                current = ""
+            chunks.extend(_hard_split(sentence, limit))
+        elif current and len(current) + len(sentence) > limit:
+            chunks.append(current)
+            current = sentence
+        else:
+            current += sentence
+    if current:
+        chunks.append(current)
+    return chunks
+
+
+def join_parts(parts: Sequence[str]) -> str:
+    """按目标语言拼接分片译文：中文直接连写，英文用空格。"""
+    cleaned = [part.strip() for part in parts if part and part.strip()]
+    if not cleaned:
+        return ""
+    if all(_CJK_TAIL.search(part) for part in cleaned):
+        return "".join(cleaned)
+    return " ".join(cleaned)
+
+
+def split_methods(methods: Sequence[str]) -> tuple[str, str]:
+    """把 "English：…/中文：…" 方法列表拆成 (英文标签, 中文标签)，去重。"""
+    unique = list(dict.fromkeys(methods))
+    english = "；".join(
+        method.split("：", 1)[1] for method in unique if method.startswith("English：")
+    )
+    chinese = "；".join(
+        method.split("：", 1)[1] for method in unique if method.startswith("中文：")
+    )
+    return english, chinese
+
+
+def _translate_with_retries(
+    fn: Callable[[str], str],
+    text: str,
+    retries: int,
+    retry_sleep: float,
+) -> str:
+    last_error: Exception | None = None
+    for attempt in range(retries):
+        try:
+            return fn(text)
+        except Exception as exc:  # 网络限流时线性退避
+            last_error = exc
+            if attempt + 1 < retries and retry_sleep:
+                time.sleep(retry_sleep * (attempt + 1))
+    raise RuntimeError(f"机器翻译失败：{last_error}") from last_error
+
+
+def _google_reachable(timeout: float = 3.0) -> bool:
+    """3 秒 HEAD 探测，避免对被墙端点发起无超时请求而长时间挂起。"""
+    try:
+        import requests
+
+        response = requests.head("https://translate.googleapis.com", timeout=timeout)
+        return response.status_code < 500
+    except Exception:
+        return False
+
+
+def _build_backends(source: str, target: str, probe: bool = True) -> list[Backend]:
+    """翻译后端链：Google 质量优先，不可达时自动退到 MyMemory（免 key）。"""
+    try:
+        from deep_translator import GoogleTranslator, MyMemoryTranslator
+    except ImportError as exc:
+        raise RuntimeError("缺少翻译依赖，请安装 requirements-whisper.txt") from exc
+
+    names = {"en": "english", "zh-CN": "chinese simplified"}
+    chain: list[Backend] = []
+    if not probe or _google_reachable():
+        google = GoogleTranslator(source=source, target=target)
+        chain.append(("Google Translate", google.translate, 4500))
+    else:
+        print("      Google 翻译不可达，直接使用 MyMemory（有代理时可设 HTTPS_PROXY）", flush=True)
+    # MyMemory 匿名额度有限；设置环境变量 MYMEMORY_EMAIL 可提额（可选）。
+    email = os.environ.get("MYMEMORY_EMAIL") or None
+    mymemory = MyMemoryTranslator(source=names[source], target=names[target], email=email)
+
+    def mymemory_translate(text: str) -> str:
+        result = mymemory.translate(text)
+        # MyMemory 额度用尽时返回 HTTP 200，但译文是警告文本，必须识别为失败。
+        if result and result.strip().upper().startswith("MYMEMORY WARNING"):
+            raise RuntimeError(f"MyMemory 额度告警：{result.strip()[:120]}")
+        return result
+
+    chain.append(("MyMemory", mymemory_translate, 480))
+    return chain
+
+
 def translate_texts(
     texts: Sequence[str],
     source: str,
     target: str,
     progress: Callable[[int, int], None] | None = None,
-) -> list[str]:
-    try:
-        from deep_translator import GoogleTranslator
-    except ImportError as exc:
-        raise RuntimeError("缺少翻译依赖，请安装 requirements-whisper.txt") from exc
-
-    translator = GoogleTranslator(source=source, target=target)
-    translated: list[str] = []
+    backends: Sequence[Backend] | None = None,
+    retries: int = 3,
+    retry_sleep: float = 1.5,
+) -> tuple[list[str], str]:
+    """多后端翻译：当前后端重试耗尽即永久切换下一个，返回 (译文, 实际后端名)。"""
+    active = list(backends) if backends is not None else _build_backends(source, target)
+    if not active:
+        raise RuntimeError("没有可用的翻译后端")
+    results: list[str] = []
+    used: list[str] = []
     total = len(texts)
-    # translate_batch 内部会维护同一个 translator，减少反复初始化；小批次便于失败重试。
-    for start in range(0, total, 20):
-        batch = list(texts[start : start + 20])
-        try:
-            values = translator.translate_batch(batch)
-            if len(values) != len(batch):
-                raise RuntimeError("翻译服务返回数量不一致")
-        except Exception:
-            values = []
-            for text in batch:
-                last_error: Exception | None = None
-                for attempt in range(3):
-                    try:
-                        values.append(translator.translate(text))
-                        last_error = None
-                        break
-                    except Exception as exc:  # 网络限流时指数退避
-                        last_error = exc
-                        time.sleep(1.5 * (attempt + 1))
-                if last_error is not None:
-                    raise RuntimeError(f"机器翻译失败：{last_error}") from last_error
-        translated.extend(str(value or "") for value in values)
+    for text in texts:
+        translated: str | None = None
+        while active:
+            label, fn, limit = active[0]
+            try:
+                parts = [
+                    _translate_with_retries(fn, chunk, retries, retry_sleep)
+                    for chunk in split_for_limit(text, limit)
+                ]
+            except Exception:
+                print(f"      翻译后端 {label} 不可用，切换下一个", flush=True)
+                active.pop(0)
+                continue
+            translated = join_parts(parts)
+            if label not in used:
+                used.append(label)
+            break
+        if translated is None:
+            raise RuntimeError("所有翻译后端均失败")
+        results.append(translated)
         if progress:
-            progress(len(translated), total)
-    return translated
+            progress(len(results), total)
+    return results, " / ".join(used)
 
 
-def fill_missing_languages(rows: Sequence[core.BilingualRow]) -> tuple[list[core.BilingualRow], list[str]]:
+def fill_missing_languages(
+    rows: Sequence[core.BilingualRow],
+    backends: Sequence[Backend] | None = None,
+) -> tuple[list[core.BilingualRow], list[str]]:
     result = list(rows)
     methods: list[str] = []
     missing_zh = [index for index, row in enumerate(result) if row.english and not row.chinese]
     if missing_zh:
         print(f"[4/5] 翻译英文 → 中文：{len(missing_zh)} 条", flush=True)
-        values = translate_texts(
+        values, backend_label = translate_texts(
             [result[index].english for index in missing_zh], "en", "zh-CN",
             lambda done, total: print(f"      翻译进度 {done}/{total}", flush=True),
+            backends=backends,
         )
         result = apply_translations(result, missing_zh, values, "chinese")
-        methods.append("中文：Google Translate 机器翻译")
+        methods.append(f"中文：{backend_label} 机器翻译")
 
     missing_en = [index for index, row in enumerate(result) if row.chinese and not row.english]
     if missing_en:
         print(f"[4/5] 翻译中文 → 英文：{len(missing_en)} 条", flush=True)
-        values = translate_texts(
+        values, backend_label = translate_texts(
             [result[index].chinese for index in missing_en], "zh-CN", "en",
             lambda done, total: print(f"      翻译进度 {done}/{total}", flush=True),
+            backends=backends,
         )
         result = apply_translations(result, missing_en, values, "english")
-        methods.append("English：Google Translate 机器翻译")
+        methods.append(f"English：{backend_label} 机器翻译")
     return result, methods
 
 
@@ -262,7 +407,8 @@ def generate(
     md_path = output_dir / f"{basename}.md"
     xlsx_path = output_dir / f"{basename}.xlsx"
     method_text = "；".join(dict.fromkeys(methods))
-    markdown = core.render_markdown(title, source_url, rows, method_text, method_text)
+    english_text, chinese_text = split_methods(methods)
+    markdown = core.render_markdown(title, source_url, rows, english_text, chinese_text)
     markdown += f"\n> 生成说明：{method_text}\n"
     md_path.write_text(markdown, encoding="utf-8")
     xlsx_path.write_bytes(build_xlsx(title, source_url, rows))

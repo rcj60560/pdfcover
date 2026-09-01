@@ -13,7 +13,7 @@
 - 时长：约 `20:09`
 - 无登录状态读取结果：没有可提取的原生/AI 字幕轨
 - 因此该视频必须走：临时音频 → Whisper 英文识别 → 中文机器翻译 → MD/XLSX
-- **当前尚未对该视频跑完 Whisper，也尚未生成最终文件。**
+- **2026-09-01 下午已跑通并生成产物**（`outputs/BV1C1t86wEM3/` 下 138 条 MD + XLSX，QA 通过）
 
 ## 已完成
 
@@ -68,9 +68,21 @@ Excel 已实现：标题和来源、真实时间数值、冻结前三行、筛�
 2. 无字幕轨时，用 yt-dlp 下载临时最佳音频。
 3. 用 `faster-whisper small.en` 在 CPU/int8 上识别英文时间轴。
 4. 合并过碎的 Whisper 段，形成适合阅读的字幕块。
-5. 用 `deep-translator` 的 GoogleTranslator 补齐中文（或缺失的英文）。
+5. 用 `deep-translator` 补齐中文（或缺失的英文）：**Google Translate → MyMemory 后端链自动切换**。
 6. 写出 `.md` / `.xlsx`，临时目录退出时自动删除音频。
 7. Markdown 会注明 Whisper/机器翻译方法，不冒充作者原生字幕。
+
+### 4. 机器翻译后端链（2026-09-01 补充，TDD）
+
+本机网络无法直连 Google（`translate.googleapis.com` 黑洞超时），单用 GoogleTranslator 必失败。
+`direct_generate.py` 现在实现：
+
+- 启动前 3 秒 HEAD 探测 Google，不可达直接不进链（deep-translator 请求无超时，黑洞连接会挂 20-40 秒/次）。
+- MyMemory 兜底（免 key）：语言用全名（`english` / `chinese simplified`）；
+  单条 500 字符上限，超长按句子边界自动分片（`split_for_limit`），译文按目标语言拼接（`join_parts`）。
+- MyMemory 额度用尽时返回 HTTP 200 + "MYMEMORY WARNING: ..." 伪装成译文——已显式识别为后端失败。
+- 运行中某后端重试耗尽会永久切换下一个；产物方法标注如实反映实际后端（如 `中文：MyMemory 机器翻译`）。
+- 可选：环境变量 `MYMEMORY_EMAIL` 提额（匿名日额度有限）；有代理时设 `HTTPS_PROXY` 走回 Google。
 
 可选依赖文件：`requirements-whisper.txt`。
 
@@ -78,12 +90,11 @@ Excel 已实现：标题和来源、真实时间数值、冻结前三行、筛�
 
 - Python：`3.12.10`
 - Flask：已安装（`3.1.3`）
-- yt-dlp：本轮已安装（`2026.8.19`）
-- `faster-whisper`：**未安装**
-- `deep-translator`：**未安装**
-- `ffmpeg`：系统 PATH 未发现；一键脚本选择 faster-whisper/PyAV 路径，不依赖系统 ffmpeg
-- 本地 Flask 服务已停止，不留后台进程
-- 当前会话没有可控浏览器实例，因此没有完成真实截图视觉 QA；Flask API 已通过测试客户端验证
+- yt-dlp：已安装（`2026.8.19`）
+- `faster-whisper`：已安装（`1.2.1`，含 ctranslate2/PyAV，无需系统 ffmpeg）
+- `deep-translator`：已安装（`1.11.4`）
+- Whisper `small.en` 模型已缓存（首次运行已下载）
+- 本机网络：无法直连 Google（翻译走 MyMemory 兜底）
 
 ## 测试状态
 
@@ -101,66 +112,32 @@ Excel 已实现：标题和来源、真实时间数值、冻结前三行、筛�
 - Flask 生成预览及 MD/XLSX 下载接口
 - launcher 自动发现
 - Whisper 字幕块合并及翻译回填纯逻辑
+- 翻译后端链（切换/分片/拼接/额度告警）、Google 探测、方法标签拆分
 
 本轮记录：
 
-- 加入一键脚本前，全仓：`57 passed`
-- 加入一键脚本后，本模块：`13 passed`
-- 提交前最终全仓回归：`58 passed in 1.36s`
+- 2026-09-01 上午提交前全仓：`58 passed`
+- 2026-09-01 下午（后端链 + 标签拆分）后全仓：`69 passed in 1.50s`
 
-## 下一步（按顺序执行）
-
-### 1. 安装 Whisper/翻译依赖
-
-```powershell
-python -m pip install -r tools/bilibili-subtitles/requirements-whisper.txt
-```
-
-注意：首次 Whisper 运行还会从 Hugging Face 下载 `small.en` 模型（数百 MB），CPU 处理 20 分钟视频需要等待一段时间。
-
-### 2. 生成本次目标视频产物
-
-```powershell
-python tools/bilibili-subtitles/direct_generate.py "https://www.bilibili.com/video/BV1C1t86wEM3/" -o "tools/bilibili-subtitles/outputs/BV1C1t86wEM3"
-```
-
-预期输出：
+## 已完成的首个真实产物（2026-09-01）
 
 ```text
-tools/bilibili-subtitles/outputs/BV1C1t86wEM3/<视频标题>-双语字幕.md
-tools/bilibili-subtitles/outputs/BV1C1t86wEM3/<视频标题>-双语字幕.xlsx
+tools/bilibili-subtitles/outputs/BV1C1t86wEM3/
+  Vocabulary in Use Advanced｜Unit 14 …-双语字幕.md   (138 条)
+  Vocabulary in Use Advanced｜Unit 14 …-双语字幕.xlsx (141 行含表头)
 ```
 
-`outputs/` 已在 `.gitignore`，产物不会误入 Git。
+QA 结论：
 
-### 3. 做内容质量抽查
+- Whisper `small.en`：专业词（antipathy / aversion / anti- 前缀族）识别准确；无幻觉循环；时间戳单调递增；块长 3–12s 适合阅读。
+- 翻译：138/138 全部有中文，无漏译、无 "MYMEMORY WARNING" 泄漏；MyMemory 对习语会直译（over the moon → 飞越月球、table → 桌子），学习对照可用。
+- 管道耗时：音频下载 ~10s + Whisper ~3.5min + MyMemory 翻译 ~4min。
 
-- 开头、中段、结尾各抽查 3–5 条。
-- 重点检查本课专业词汇是否被 Whisper 错听。
-- 检查字幕时间是否单调递增、有没有长段重复/幻觉。
-- 检查中文是否漏译、翻译接口是否返回英文原文。
-- 若 `small.en` 准确度不够，可改用 `--whisper-model medium.en`（更慢、模型更大）。
+## 下一步（可选）
 
-### 4. 做产物视觉检查
-
-- Markdown：用常用编辑器打开，确认中英块和时间戳易读。
-- Excel：确认标题/来源可见，表头冻结，D/E 长文本不截断，筛选正常。
-- 如有可控浏览器，再对 `http://127.0.0.1:8600` 做桌面和窄屏截图 QA。
-
-### 5. 回归
-
-```powershell
-python -m pytest -q
-node --check tools/bilibili-subtitles/static/app.js
-git diff --check
-```
-
-## 已知风险 / 待改进
-
-- `deep-translator` 的 Google 路径无需 API Key，但依赖外部网页服务，可能限流或变化；脚本已有小批次与三次重试，但尚未真实跑满本视频。
-- 一键 Whisper 路径目前只有离线纯逻辑测试，尚未做真实 20 分钟端到端验证。
-- 网页模式和一键模式暂时是两个入口；网页遇到“无字幕轨”不会自动启动 Whisper。
-- Excel 当前记录标题和来源 URL，但没有单独的“生成方法”元数据行；Markdown 有生成说明。
+- 若后续视频需要更好译文质量：设 `HTTPS_PROXY`（代理）走回 Google，或设 `MYMEMORY_EMAIL` 提高 MyMemory 日额度。
+- 网页模式和一键模式仍是两个入口；网页遇到“无字幕轨”不会自动启动 Whisper。
+- Excel 没有单独的“生成方法”元数据行；Markdown 有生成说明。
 - B 站未登录时“没有字幕轨”和“登录后才展示字幕”有时难以区分；若用户明确允许，可尝试 `--browser edge`（或 chrome/firefox）。
 - 机器翻译用于学习对照，不能视为出版级翻译。
 
