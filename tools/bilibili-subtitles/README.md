@@ -55,6 +55,7 @@ python tools/bilibili-subtitles/direct_generate.py "https://www.bilibili.com/vid
 - 命令行一键模式会在没有字幕轨时临时下载音频并调用 Whisper，结束后删除临时音频。
 - 一键模式用 Google Translate / MyMemory 后端链补齐缺失语言（自动探测切换），结果属于机器翻译，需要抽查；MyMemory 对习语（如 over the moon）可能直译。
 - 画面里烧录的字幕不会做 OCR；无字幕轨时的一键模式识别的是音频内容。
+- Excel 由纯标准库生成，采用 Excel 原生的 sharedStrings + theme 形态（预览窗格 / 手机端 / 微信 QQ 预览等轻量查看器也兼容；早期 inlineStr 版本在部分查看器里显示空白）。
 - 时间轴对齐依赖两条字幕自身的时间，极少数切分差异特别大的视频可能需要人工微调。
 - B 站接口变化时先升级 `yt-dlp`：`python -m pip install -U yt-dlp`。
 

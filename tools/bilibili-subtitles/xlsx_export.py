@@ -14,9 +14,36 @@ def _xml_text(value: object) -> str:
     return escape(str(value), {'"': "&quot;"})
 
 
-def _inline_cell(ref: str, value: str, style: int) -> str:
-    preserve = ' xml:space="preserve"' if value[:1].isspace() or value[-1:].isspace() else ""
-    return f'<c r="{ref}" s="{style}" t="inlineStr"><is><t{preserve}>{_xml_text(value)}</t></is></c>'
+class _SharedStrings:
+    """收集去重字符串；生成 Excel 原生形态的 sharedStrings 表（查看器兼容性最好）。"""
+
+    def __init__(self) -> None:
+        self.items: list[str] = []
+        self.refs = 0
+        self._index: dict[str, int] = {}
+
+    def add(self, value: str) -> int:
+        self.refs += 1
+        if value not in self._index:
+            self._index[value] = len(self.items)
+            self.items.append(value)
+        return self._index[value]
+
+
+def _shared_strings_xml(shared: _SharedStrings) -> str:
+    items = "".join(
+        "<si><t%s>%s</t></si>" % (
+            ' xml:space="preserve"' if value[:1].isspace() or value[-1:].isspace() else "",
+            _xml_text(value),
+        )
+        for value in shared.items
+    )
+    return f'''<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<sst xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" count="{shared.refs}" uniqueCount="{len(shared.items)}">{items}</sst>'''
+
+
+def _string_cell(ref: str, value: str, style: int, shared: _SharedStrings) -> str:
+    return f'<c r="{ref}" s="{style}" t="s"><v>{shared.add(value)}</v></c>'
 
 
 def _number_cell(ref: str, value: float | int, style: int) -> str:
@@ -29,17 +56,17 @@ def _row_height(row: BilingualRow) -> float:
     return float(min(96, max(30, 18 * visual_lines)))
 
 
-def _sheet_xml(title: str, source_url: str, rows: Sequence[BilingualRow]) -> str:
+def _sheet_xml(title: str, source_url: str, rows: Sequence[BilingualRow], shared: _SharedStrings) -> str:
     last_row = len(rows) + 3
     sheet_rows = [
-        '<row r="1" ht="28" customHeight="1">' + _inline_cell("A1", title, 1) + "</row>",
-        '<row r="2" ht="24" customHeight="1">' + _inline_cell("A2", source_url, 2) + "</row>",
+        '<row r="1" ht="28" customHeight="1">' + _string_cell("A1", title, 1, shared) + "</row>",
+        '<row r="2" ht="24" customHeight="1">' + _string_cell("A2", source_url, 2, shared) + "</row>",
         '<row r="3" ht="25" customHeight="1">'
-        + _inline_cell("A3", "序号", 3)
-        + _inline_cell("B3", "开始时间", 3)
-        + _inline_cell("C3", "结束时间", 3)
-        + _inline_cell("D3", "English", 3)
-        + _inline_cell("E3", "中文", 3)
+        + _string_cell("A3", "序号", 3, shared)
+        + _string_cell("B3", "开始时间", 3, shared)
+        + _string_cell("C3", "结束时间", 3, shared)
+        + _string_cell("D3", "English", 3, shared)
+        + _string_cell("E3", "中文", 3, shared)
         + "</row>",
     ]
     for index, row in enumerate(rows, start=1):
@@ -50,8 +77,8 @@ def _sheet_xml(title: str, source_url: str, rows: Sequence[BilingualRow]) -> str
             _number_cell(f"A{excel_row}", index, index_style),
             _number_cell(f"B{excel_row}", f"{row.start / 86400:.12f}", time_style),
             _number_cell(f"C{excel_row}", f"{row.end / 86400:.12f}", time_style),
-            _inline_cell(f"D{excel_row}", row.english, text_style),
-            _inline_cell(f"E{excel_row}", row.chinese, text_style),
+            _string_cell(f"D{excel_row}", row.english, text_style, shared),
+            _string_cell(f"E{excel_row}", row.chinese, text_style, shared),
         ]
         sheet_rows.append(
             f'<row r="{excel_row}" ht="{_row_height(row):.0f}" customHeight="1">'
@@ -120,9 +147,16 @@ _STYLES_XML = '''<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 </styleSheet>'''
 
 
+# Excel 标准主题骨架：styles.xml 里的 <color theme="1"/> 需要该部件才能被所有查看器解析。
+_THEME_XML = '''<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<a:theme xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" name="Office Theme"><a:themeElements><a:clrScheme name="Office"><a:dk1><a:sysClr val="windowText" lastClr="000000"/></a:dk1><a:lt1><a:sysClr val="window" lastClr="FFFFFF"/></a:lt1><a:dk2><a:srgbClr val="44546A"/></a:dk2><a:lt2><a:srgbClr val="E7E6E6"/></a:lt2><a:accent1><a:srgbClr val="4472C4"/></a:accent1><a:accent2><a:srgbClr val="ED7D31"/></a:accent2><a:accent3><a:srgbClr val="A5A5A5"/></a:accent3><a:accent4><a:srgbClr val="FFC000"/></a:accent4><a:accent5><a:srgbClr val="5B9BD5"/></a:accent5><a:accent6><a:srgbClr val="70AD47"/></a:accent6><a:hlink><a:srgbClr val="0563C1"/></a:hlink><a:folHlink><a:srgbClr val="954F72"/></a:folHlink></a:clrScheme><a:fontScheme name="Office"><a:majorFont><a:latin typeface="Calibri Light" panose="020F0302020204030204"/><a:ea typeface=""/><a:cs typeface=""/></a:majorFont><a:minorFont><a:latin typeface="Calibri" panose="020F0502020204030204"/><a:ea typeface=""/><a:cs typeface=""/></a:minorFont></a:fontScheme><a:fmtScheme name="Office"><a:fillStyleLst><a:solidFill><a:schemeClr val="phClr"/></a:solidFill><a:gradFill rotWithShape="1"><a:gsLst><a:gs pos="0"><a:schemeClr val="phClr"><a:tint val="67000"/></a:schemeClr></a:gs><a:gs pos="100000"><a:schemeClr val="phClr"><a:tint val="81000"/></a:schemeClr></a:gs></a:gsLst><a:lin ang="5400000" scaled="0"/></a:gradFill><a:gradFill rotWithShape="1"><a:gsLst><a:gs pos="0"><a:schemeClr val="phClr"><a:shade val="94000"/></a:schemeClr></a:gs><a:gs pos="100000"><a:schemeClr val="phClr"><a:shade val="78000"/></a:schemeClr></a:gs></a:gsLst><a:lin ang="5400000" scaled="0"/></a:gradFill></a:fillStyleLst><a:lnStyleLst><a:ln w="6350" cap="flat" cmpd="sng" algn="ctr"><a:solidFill><a:schemeClr val="phClr"/></a:solidFill><a:prstDash val="solid"/><a:miter lim="800000"/></a:ln><a:ln w="12700" cap="flat" cmpd="sng" algn="ctr"><a:solidFill><a:schemeClr val="phClr"/></a:solidFill><a:prstDash val="solid"/><a:miter lim="800000"/></a:ln><a:ln w="19050" cap="flat" cmpd="sng" algn="ctr"><a:solidFill><a:schemeClr val="phClr"/></a:solidFill><a:prstDash val="solid"/><a:miter lim="800000"/></a:ln></a:lnStyleLst><a:effectStyleLst><a:effectStyle><a:effectLst><a:outerShdw blurRad="40000" dist="20000" dir="5400000" rotWithShape="0"><a:srgbClr val="000000"><a:alpha val="38000"/></a:srgbClr></a:outerShdw></a:effectLst></a:effectStyle><a:effectStyle><a:effectLst><a:outerShdw blurRad="40000" dist="20000" dir="5400000" rotWithShape="0"><a:srgbClr val="000000"><a:alpha val="38000"/></a:srgbClr></a:outerShdw></a:effectLst></a:effectStyle><a:effectStyle><a:effectLst><a:outerShdw blurRad="40000" dist="20000" dir="5400000" rotWithShape="0"><a:srgbClr val="000000"><a:alpha val="38000"/></a:srgbClr></a:outerShdw></a:effectLst><a:scene3d><a:camera prst="orthographicFront"/><a:lightRig rig="threePt" dir="t"/></a:scene3d><a:sp3d><a:bevelT w="63500" h="25400"/></a:sp3d></a:effectStyle></a:effectStyleLst><a:bgFillStyleLst><a:solidFill><a:schemeClr val="phClr"/></a:solidFill><a:solidFill><a:schemeClr val="phClr"><a:tint val="95000"/></a:schemeClr></a:solidFill><a:solidFill><a:schemeClr val="phClr"><a:modulate val="105000" tint="71000" shade="87000"/></a:schemeClr></a:solidFill></a:bgFillStyleLst></a:fmtScheme></a:themeElements></a:theme>'''
+
+
 def build_xlsx(title: str, source_url: str, rows: Sequence[BilingualRow]) -> bytes:
     """返回一个单工作表 xlsx；时间列为 Excel 真正的时间值，可排序/筛选。"""
     created = datetime.now(timezone.utc).replace(microsecond=0).isoformat().replace("+00:00", "Z")
+    shared = _SharedStrings()
+    sheet = _sheet_xml(title, source_url, rows, shared)
     content_types = '''<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">
   <Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>
@@ -130,6 +164,8 @@ def build_xlsx(title: str, source_url: str, rows: Sequence[BilingualRow]) -> byt
   <Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/>
   <Override PartName="/xl/worksheets/sheet1.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>
   <Override PartName="/xl/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.styles+xml"/>
+  <Override PartName="/xl/sharedStrings.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sharedStrings+xml"/>
+  <Override PartName="/xl/theme/theme1.xml" ContentType="application/vnd.openxmlformats-officedocument.theme+xml"/>
   <Override PartName="/docProps/core.xml" ContentType="application/vnd.openxmlformats-package.core-properties+xml"/>
   <Override PartName="/docProps/app.xml" ContentType="application/vnd.openxmlformats-officedocument.extended-properties+xml"/>
 </Types>'''
@@ -150,6 +186,8 @@ def build_xlsx(title: str, source_url: str, rows: Sequence[BilingualRow]) -> byt
 <Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
   <Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet1.xml"/>
   <Relationship Id="rId2" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml"/>
+  <Relationship Id="rId3" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/theme" Target="theme/theme1.xml"/>
+  <Relationship Id="rId4" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/sharedStrings" Target="sharedStrings.xml"/>
 </Relationships>'''
     core = f'''<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <cp:coreProperties xmlns:cp="http://schemas.openxmlformats.org/package/2006/metadata/core-properties"
@@ -174,5 +212,7 @@ def build_xlsx(title: str, source_url: str, rows: Sequence[BilingualRow]) -> byt
         archive.writestr("xl/workbook.xml", workbook)
         archive.writestr("xl/_rels/workbook.xml.rels", workbook_rels)
         archive.writestr("xl/styles.xml", _STYLES_XML)
-        archive.writestr("xl/worksheets/sheet1.xml", _sheet_xml(title, source_url, rows))
+        archive.writestr("xl/theme/theme1.xml", _THEME_XML)
+        archive.writestr("xl/sharedStrings.xml", _shared_strings_xml(shared))
+        archive.writestr("xl/worksheets/sheet1.xml", sheet)
     return output.getvalue()

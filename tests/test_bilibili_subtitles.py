@@ -270,6 +270,25 @@ def test_xlsx_package_has_readable_sheet_freeze_filter_and_time_style():
         assert float(cells["B4"].find("m:v", ns).text) == pytest.approx(1.25 / 86400)
 
 
+def test_xlsx_uses_shared_strings_and_theme_for_viewer_compatibility():
+    rows = [core.BilingualRow(1.0, 2.5, "Hello world", "你好，世界")]
+    data = build_xlsx("视频标题", "https://www.bilibili.com/video/BV1x", rows)
+    with ZipFile(BytesIO(data)) as archive:
+        names = set(archive.namelist())
+        assert "xl/sharedStrings.xml" in names
+        assert "xl/theme/theme1.xml" in names
+        content_types = archive.read("[Content_Types].xml").decode("utf-8")
+        assert "spreadsheetml.sharedStrings+xml" in content_types
+        assert "theme+xml" in content_types
+        rels = archive.read("xl/_rels/workbook.xml.rels").decode("utf-8")
+        assert "sharedStrings.xml" in rels and "theme1.xml" in rels
+        sheet = archive.read("xl/worksheets/sheet1.xml").decode("utf-8")
+        assert 't="inlineStr"' not in sheet, "轻量查看器不支持 inlineStr，应全部走 sharedStrings"
+        shared = archive.read("xl/sharedStrings.xml").decode("utf-8")
+        for value in ("视频标题", "序号", "English", "Hello world", "你好，世界"):
+            assert value in shared
+
+
 def test_web_generate_and_download_endpoints():
     from extractor import ExtractedVideo
 
