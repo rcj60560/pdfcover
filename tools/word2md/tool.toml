@@ -1,4 +1,12 @@
 name = "Word→Markdown"
-desc = "Word 文档转 Markdown（占位，待实现）"
+desc = "Word(.docx) → GitHub 风格 Markdown（pandoc 转换，图片自动抽到 图片和附件/，复杂表格降级 HTML 不丢数据）"
 category = "文档"
-status = "planned"
+status = "ready"
+
+[run]
+cmd = ["python", "word2md_cli.py"]
+port = 0
+url = ""
+
+[links]
+live = ""
