@@ -68,3 +68,6 @@ tools/bwf-data/out/
 # B站字幕本地产物 / 可选 Whisper 模型
 tools/bilibili-subtitles/outputs/
 tools/bilibili-subtitles/.models/
+
+# word2md 网页版上传/转换产物
+tools/word2md/out/

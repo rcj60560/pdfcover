@@ -1,4 +1,5 @@
 """word2md 纯逻辑单测 + pandoc 在机时的集成用例（未装则自动跳过）。"""
+import io
 import shutil
 import sys
 import zipfile
@@ -194,5 +195,47 @@ def test_manifest_discovers_word2md():
     tools = {t.slug: t for t in load_tools(Path(__file__).parents[1] / "tools")}
     tool = tools["word2md"]
     assert tool.status == "ready"
-    assert tool.port == 0                                    # 批处理型，无网页
+    assert tool.port == 8700
+    assert tool.url == "http://127.0.0.1:8700"
     assert tool.name == "Word→Markdown"
+
+
+# ---------- 网页版（test_client，不起服） ----------
+
+@pytest.mark.skipif(not HAS_PANDOC, reason="本机未安装 pandoc")
+def test_web_convert_zip_and_rejects(tmp_path, monkeypatch):
+    import app as web
+    monkeypatch.setattr(web, "OUT_DIR", tmp_path / "out")    # 产物不落仓库
+    client = web.app.test_client()
+
+    assert client.get("/").status_code == 200
+
+    docx = make_docx(tmp_path / "说明书.docx", with_image=True)
+    rv = client.post("/api/convert",
+                     data={"file": (docx.open("rb"), "说明书.docx")},
+                     content_type="multipart/form-data")
+    j = rv.get_json()
+    assert rv.status_code == 200 and j["ok"]
+    assert "# 标题一" in j["md_text"]
+    assert j["images"] == ["image1.png"]
+    assert (Path(j["out_dir"]) / "说明书.md").is_file()
+
+    z = client.get(j["zip_url"])
+    assert z.status_code == 200 and z.data[:2] == b"PK"
+
+    for name, blob, expect in [("老文档.doc", b"\xd0\xcf", "另存为 .docx"),
+                               ("笔记.txt", b"x", "只支持 .docx")]:
+        rv = client.post("/api/convert", data={"file": (io.BytesIO(blob), name)},
+                         content_type="multipart/form-data")
+        assert rv.status_code == 400 and expect in rv.get_json()["error"]
+
+
+def test_web_paths_are_jailed(tmp_path, monkeypatch):
+    """zip 只认合法 token；reveal 只允许 out/ 内的绝对路径。"""
+    import app as web
+    monkeypatch.setattr(web, "OUT_DIR", tmp_path)
+    client = web.app.test_client()
+    assert client.get("/api/zip/nothex!").status_code == 403
+    assert client.get("/api/zip/000000000000").status_code == 404
+    rv = client.post("/api/reveal", json={"path": r"C:\Windows"})
+    assert rv.status_code == 403

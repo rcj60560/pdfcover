@@ -4,9 +4,9 @@ category = "文档"
 status = "ready"
 
 [run]
-cmd = ["python", "word2md_cli.py"]
-port = 0
-url = ""
+cmd = ["python", "app.py"]
+port = 8700
+url = "http://127.0.0.1:8700"
 
 [links]
 live = ""

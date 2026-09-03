@@ -8,6 +8,16 @@
 
 ## 用法
 
+**网页版**（面板点「启动」）：
+
+```bash
+python app.py              # http://127.0.0.1:8700
+```
+
+上传 .docx → 预览 md → 下载 zip（md + 图片和附件/）或打开产物目录。产物在 `out/<token>/`，超过 24h 自动清理。
+
+**命令行版**（自动化/归档到 devdocs 用这个）：
+
 ```bash
 python word2md_cli.py 需求说明书.docx                    # → 同目录 需求说明书.md + 图片和附件/
 python word2md_cli.py 图片和附件/说明书.docx              # → 上一级 说明书.md，图片并入 图片和附件/
