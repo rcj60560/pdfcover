@@ -79,6 +79,21 @@ button, a.export { border: 0; cursor: pointer; text-decoration: none; }
 .track-chips { display: flex; gap: 7px; flex-wrap: wrap; margin: 13px 0; }
 .track-chip { padding: 5px 9px; border-radius: 999px; color: #52476a; background: #eee9f5; font-size: 11px; }
 .warnings { color: #84511c; background: #fff6e9; white-space: pre-line; }
+.transcribe-offer { margin-top: 16px; padding: 16px; border: 1px dashed #c9bdf0; border-radius: 16px; background: #f6f3fd; }
+.offer-copy { margin: 0 0 14px; color: #4d4463; font-size: 13px; }
+.transcribe-offer .generate { width: 100%; }
+.transcribe-progress { margin-top: 14px; }
+.progress-head { display: flex; align-items: center; gap: 8px; color: #564695; font-size: 13px; font-weight: 750; }
+.progress-dot {
+  flex: none; width: 9px; height: 9px; border-radius: 50%; background: var(--violet);
+  animation: pulse 1.2s ease-in-out infinite;
+}
+@keyframes pulse { 50% { opacity: .25; } }
+.transcribe-log {
+  max-height: 180px; margin: 10px 0 0; padding: 11px 13px; overflow: auto; border-radius: 11px;
+  color: #5b5368; background: #fff; border: 1px solid var(--line);
+  font: 11px/1.7 ui-monospace, Consolas, monospace; white-space: pre-wrap; word-break: break-word;
+}
 .track-grid { display: grid; grid-template-columns: 1fr auto 1fr; gap: 14px; align-items: end; margin-top: 18px; }
 .track-grid label > span { display: block; margin-bottom: 7px; font-size: 13px; font-weight: 750; }
 .track-grid select { min-height: 48px; padding: 0 12px; }
@@ -92,6 +107,7 @@ button, a.export { border: 0; cursor: pointer; text-decoration: none; }
 a.export { padding: 10px 14px; border-radius: 11px; color: #fff; font-size: 13px; font-weight: 750; }
 a.export.md { background: #2e6757; }
 a.export.xlsx { background: #286345; }
+a.export.srt { background: #54429f; }
 .notice { color: #84511c; background: #fff6e9; }
 .reader-toolbar {
   position: sticky; top: 10px; z-index: 4; display: flex; align-items: center; gap: 9px; margin-bottom: 12px; padding: 9px;

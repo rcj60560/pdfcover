@@ -58,6 +58,20 @@
       </div>
       <div id="track-chips" class="track-chips"></div>
       <div id="warnings" class="warnings" hidden></div>
+      <div id="transcribe-offer" class="transcribe-offer" hidden>
+        <p class="offer-copy">
+          这个视频没有可提取的字幕轨。如果 UP 主说的是英文，可以下载临时音频（识别完自动删除，不下载视频），
+          用 Whisper 识别英文语音，再机器翻译成中文，生成带时间轴的英中双语字幕。约需几分钟，请保持页面打开。
+        </p>
+        <button class="primary generate" id="transcribe-button" type="button">识别英文语音并生成双语字幕</button>
+        <div id="transcribe-progress" class="transcribe-progress" hidden>
+          <div class="progress-head">
+            <span class="progress-dot" aria-hidden="true"></span>
+            <span id="transcribe-phase">准备中…</span>
+          </div>
+          <pre id="transcribe-log" class="transcribe-log"></pre>
+        </div>
+      </div>
       <div class="track-grid">
         <label>
           <span>English</span>
@@ -82,6 +96,7 @@
         <div class="export-row">
           <a class="export md" id="download-md">下载 Markdown</a>
           <a class="export xlsx" id="download-xlsx">下载 Excel</a>
+          <a class="export srt" id="download-srt">下载 SRT</a>
         </div>
       </div>
       <div id="reader-notice" class="notice" hidden></div>
@@ -102,7 +117,7 @@
     </section>
 
     <footer>
-      <strong>说明</strong> · 当前版本读取视频自带/AI 字幕轨，不对画面烧录字幕做 OCR，也不下载视频或音频。
+      <strong>说明</strong> · 优先读取视频自带/AI 字幕轨；无字幕轨的英文口播视频可用语音识别（临时下载音频，识别完自动删除，不下载视频）。画面烧录字幕不做 OCR；机器翻译供学习对照。
     </footer>
   </main>
   <script src="{{ url_for('static', filename='app.js') }}" defer></script>

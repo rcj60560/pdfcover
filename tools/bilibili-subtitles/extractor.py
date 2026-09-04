@@ -133,8 +133,8 @@ def _friendly_error(exc: Exception, browser: str) -> str:
         return f"无法解密 {browser} Cookie；可先选择“不读取登录状态”重试"
     if "unsupported url" in lower:
         return "yt-dlp 无法识别这个链接，请确认它是有效的 B 站视频页"
-    if "429" in lower or "rate limit" in lower or "352" in lower:
-        return "B站请求过于频繁，请稍后再试；也可以选择浏览器登录状态"
+    if "429" in lower or "rate limit" in lower or "352" in lower or "412" in lower or "precondition failed" in lower:
+        return "B站请求过于频繁或被风控拦截，请稍后再试；也可以选择浏览器登录状态重试"
     return f"读取 B 站视频失败：{message}"
 
 
@@ -180,8 +180,9 @@ def extract_video(url: str, cookie_browser: str = "none") -> ExtractedVideo:
         needs_login = any("login" in warning.lower() or "登录" in warning for warning in logger.warnings)
         if needs_login and browser == "none":
             raise ExtractionError("B站要求登录后才能读取该视频字幕，请选择 Chrome / Edge / Firefox 登录状态后重试")
-        raise ExtractionError(
-            "这个视频没有可提取的字幕轨。画面中烧录的文字不属于字幕轨，后续需要语音识别（Whisper）才能生成。"
+        # 无字幕轨不再是死路：返回空轨道视频，网页模式据此提供语音识别入口。
+        logger.warnings.append(
+            "视频没有可提取的字幕轨；画面烧录的文字不属于字幕轨，可用语音识别（Whisper）从音频生成。"
         )
 
     try:

@@ -6,6 +6,8 @@ const state = {
   fontScale: 1,
 };
 
+let transcribeTimer = null;
+
 function setStatus(message, type = "loading") {
   const box = $("status");
   box.hidden = !message;
@@ -49,6 +51,15 @@ function fillTrackSelect(select, tracks, family, suggested) {
   if (allowed.some((track) => track.id === suggested)) select.value = suggested;
 }
 
+function resetTranscribePanel() {
+  if (transcribeTimer) { window.clearTimeout(transcribeTimer); transcribeTimer = null; }
+  const button = $("transcribe-button");
+  button.disabled = false;
+  $("transcribe-progress").hidden = true;
+  $("transcribe-phase").textContent = "准备中…";
+  $("transcribe-log").textContent = "";
+}
+
 function renderInspection(data) {
   state.jobId = data.job_id;
   const video = data.video;
@@ -71,9 +82,18 @@ function renderInspection(data) {
   const warnings = $("warnings");
   warnings.hidden = !data.warnings.length;
   warnings.textContent = data.warnings.join("\n");
+
+  const canTranscribe = Boolean(data.can_transcribe);
+  document.querySelector(".track-grid").hidden = canTranscribe;
+  document.querySelector("#generate-button").hidden = canTranscribe;
+  $("transcribe-offer").hidden = !canTranscribe;
+  resetTranscribePanel();
+
   $("tracks-panel").hidden = false;
   $("reader").hidden = true;
-  setStatus(`已找到 ${data.tracks.length} 条字幕轨，请确认中英文选择。`, "success");
+  setStatus(canTranscribe
+    ? "这个视频没有字幕轨。如果是英文口播，可用语音识别生成双语字幕。"
+    : `已找到 ${data.tracks.length} 条字幕轨，请确认中英文选择。`, canTranscribe ? "loading" : "success");
   $("tracks-panel").scrollIntoView({ behavior: "smooth", block: "start" });
 }
 
@@ -137,10 +157,72 @@ function renderRows(data) {
   $("reader-notice").textContent = data.notice;
   $("download-md").href = `/api/jobs/${state.jobId}/download/md`;
   $("download-xlsx").href = `/api/jobs/${state.jobId}/download/xlsx`;
+  $("download-srt").href = `/api/jobs/${state.jobId}/download/srt`;
   $("subtitle-search").value = "";
   $("no-match").hidden = true;
   $("reader").hidden = false;
   $("reader").scrollIntoView({ behavior: "smooth", block: "start" });
+}
+
+const TRANSCRIBE_PHASE_TEXT = {
+  running: "识别中：下载音频 → Whisper 转写 → 机器翻译（约几分钟，请保持页面打开）",
+  done: "识别完成",
+  error: "识别失败",
+};
+
+async function startTranscribe() {
+  const button = $("transcribe-button");
+  button.disabled = true;
+  $("transcribe-progress").hidden = false;
+  $("transcribe-phase").textContent = TRANSCRIBE_PHASE_TEXT.running;
+  $("transcribe-log").textContent = "正在启动识别任务…\n";
+  try {
+    await api(`/api/jobs/${state.jobId}/transcribe`, {
+      browser: localStorage.getItem("bili-subtitle-browser") || "none",
+    });
+    transcribeTimer = window.setTimeout(pollTranscribe, 1500);
+  } catch (error) {
+    $("transcribe-phase").textContent = "启动失败";
+    $("transcribe-log").textContent += `${error.message}\n`;
+    button.disabled = false;
+  }
+}
+
+async function pollTranscribe() {
+  let data = null;
+  try {
+    const response = await fetch(`/api/jobs/${state.jobId}/transcribe/status`);
+    data = await response.json().catch(() => ({ ok: false, error: `HTTP ${response.status}` }));
+    if (!response.ok || !data.ok) throw new Error(data.error || "查询进度失败");
+    $("transcribe-phase").textContent = TRANSCRIBE_PHASE_TEXT[data.phase] || data.phase;
+    if (data.log && data.log.length) {
+      const logBox = $("transcribe-log");
+      logBox.textContent = data.log.join("\n") + "\n";
+      logBox.scrollTop = logBox.scrollHeight;
+    }
+    if (data.phase === "running") {
+      transcribeTimer = window.setTimeout(pollTranscribe, 2500);
+      return;
+    }
+    if (data.phase === "done") {
+      setStatus("语音识别完成，双语字幕已生成。", "success");
+      renderRows({
+        rows: data.rows,
+        count: data.count,
+        notice: data.notice,
+      });
+      return;
+    }
+    if (data.phase === "error") {
+      setStatus(`识别失败：${data.error}`, "error");
+      $("transcribe-log").textContent += `${data.error}\n`;
+    }
+  } catch (error) {
+    setStatus(error.message, "error");
+    $("transcribe-log").textContent += `${error.message}\n`;
+  } finally {
+    if (!data || data.phase !== "running") $("transcribe-button").disabled = false;
+  }
 }
 
 async function generate() {
@@ -198,6 +280,7 @@ function restoreForm() {
 
 $("inspect-form").addEventListener("submit", inspect);
 $("generate-button").addEventListener("click", generate);
+$("transcribe-button").addEventListener("click", startTranscribe);
 $("subtitle-search").addEventListener("input", filterRows);
 $("font-smaller").addEventListener("click", () => changeFont(-.1));
 $("font-larger").addEventListener("click", () => changeFont(.1));

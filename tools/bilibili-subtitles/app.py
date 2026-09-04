@@ -1,18 +1,39 @@
-"""B站字幕提取 → 中英时间轴对齐 → Markdown / Excel。"""
+"""B站字幕提取 → 中英时间轴对齐 → Markdown / Excel / SRT。"""
 from __future__ import annotations
 
 import sys
 from collections import OrderedDict
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from io import BytesIO
-from threading import Lock
+from threading import Lock, Thread
 from uuid import uuid4
 
 from flask import Flask, jsonify, render_template, request, send_file
 
+import direct_generate
 import subtitle_core as core
 from extractor import ExtractedVideo, ExtractionError, extract_video
 from xlsx_export import build_xlsx
+
+# 可注入点：测试用假实现替换，避免触网/加载模型。
+TRANSCRIBE_PIPELINE = direct_generate.generate_rows_from_audio
+TRANSLATE_ROWS = direct_generate.fill_missing_languages
+
+WHISPER_INSTALL_HINT = (
+    "缺少语音识别依赖，请先运行：python -m pip install -r tools/bilibili-subtitles/requirements-whisper.txt"
+)
+
+
+@dataclass
+class TranscribeState:
+    """后台语音识别任务的进度与结果（仅内存）。"""
+
+    phase: str = "idle"  # idle / running / done / error
+    log: list[str] = field(default_factory=list)
+    error: str = ""
+
+    def public_dict(self) -> dict:
+        return {"phase": self.phase, "log": self.log[-50:], "error": self.error}
 
 
 @dataclass
@@ -21,6 +42,8 @@ class Job:
     rows: list[core.BilingualRow] | None = None
     english_label: str = ""
     chinese_label: str = ""
+    transcribe: TranscribeState = field(default_factory=TranscribeState)
+    transcribe_thread: Thread | None = None
 
 
 class JobStore:
@@ -49,6 +72,39 @@ class JobStore:
 
 app = Flask(__name__)
 jobs = JobStore()
+_transcribe_start_lock = Lock()
+
+
+def _whisper_deps_missing() -> str | None:
+    """语音识别链路依赖检查；缺失时返回给用户的安装提示。"""
+    try:
+        import deep_translator  # noqa: F401
+        import faster_whisper  # noqa: F401
+    except ImportError:
+        return WHISPER_INSTALL_HINT
+    return None
+
+
+def _run_transcribe(job: Job, url: str, browser: str, model_name: str) -> None:
+    state = job.transcribe
+
+    def say(message: str) -> None:
+        state.log.append(str(message))
+        if len(state.log) > 400:
+            del state.log[:200]
+
+    try:
+        result = TRANSCRIBE_PIPELINE(url, browser, model_name, log=say)
+        rows, methods = TRANSLATE_ROWS(result.rows, log=say)
+        english_text, chinese_text = direct_generate.split_methods(result.methods + methods)
+        job.rows = rows
+        job.english_label = english_text or "语音识别"
+        job.chinese_label = chinese_text or "机器翻译"
+        state.error = ""
+        state.phase = "done"
+    except Exception as exc:  # 后台线程兜底：失败原因进状态，供页面展示
+        state.error = str(exc) or exc.__class__.__name__
+        state.phase = "error"
 
 
 def _video_public(video: ExtractedVideo) -> dict:
@@ -93,6 +149,7 @@ def inspect_video():
         tracks=[track.public_dict() for track in video.tracks],
         suggested=core.suggested_track_ids(video.tracks),
         warnings=list(video.warnings),
+        can_transcribe=not video.tracks,
     )
 
 
@@ -139,6 +196,53 @@ def generate():
     )
 
 
+@app.post("/api/jobs/<job_id>/transcribe")
+def start_transcribe(job_id: str):
+    try:
+        job = _job_or_error(job_id)
+    except LookupError as exc:
+        return jsonify(ok=False, error=str(exc)), 404
+    missing = _whisper_deps_missing()
+    if missing:
+        return jsonify(ok=False, error=missing), 400
+    data = request.get_json(silent=True) or {}
+    browser = str(data.get("browser") or "none")
+    model_name = str(data.get("model") or "small.en")
+    with _transcribe_start_lock:
+        if job.transcribe.phase == "running":
+            return jsonify(ok=False, error="识别任务正在进行中，请等待完成"), 409
+        job.transcribe.phase = "running"
+        job.transcribe.error = ""
+        job.transcribe.log = []
+        thread = Thread(
+            target=_run_transcribe,
+            args=(job, job.video.source_url, browser, model_name),
+            daemon=True,
+        )
+        job.transcribe_thread = thread
+        thread.start()
+    return jsonify(ok=True)
+
+
+@app.get("/api/jobs/<job_id>/transcribe/status")
+def transcribe_status(job_id: str):
+    try:
+        job = _job_or_error(job_id)
+    except LookupError as exc:
+        return jsonify(ok=False, error=str(exc)), 404
+    payload = {"ok": True, **job.transcribe.public_dict()}
+    if job.transcribe.phase == "done" and job.rows:
+        rows = job.rows
+        payload.update(
+            rows=[row.public_dict() for row in rows],
+            count=len(rows),
+            has_english=any(row.english for row in rows),
+            has_chinese=any(row.chinese for row in rows),
+            notice="内容由语音识别与机器翻译生成，供学习对照，非作者原字幕。",
+        )
+    return jsonify(payload)
+
+
 @app.get("/api/jobs/<job_id>/download/<kind>")
 def download(job_id: str, kind: str):
     try:
@@ -168,7 +272,13 @@ def download(job_id: str, kind: str):
             mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
             as_attachment=True, download_name=basename + ".xlsx",
         )
-    return "只支持 md / xlsx", 404
+    if kind == "srt":
+        content = core.render_srt(job.rows).encode("utf-8")
+        return send_file(
+            BytesIO(content), mimetype="application/x-subrip; charset=utf-8",
+            as_attachment=True, download_name=basename + ".srt",
+        )
+    return "只支持 md / xlsx / srt", 404
 
 
 if __name__ == "__main__":

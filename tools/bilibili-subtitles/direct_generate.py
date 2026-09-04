@@ -11,7 +11,7 @@ import re
 import sys
 import tempfile
 import time
-from dataclasses import replace
+from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import Callable, Sequence
 
@@ -257,15 +257,17 @@ def translate_texts(
 def fill_missing_languages(
     rows: Sequence[core.BilingualRow],
     backends: Sequence[Backend] | None = None,
+    log: Callable[[str], None] | None = None,
 ) -> tuple[list[core.BilingualRow], list[str]]:
+    say = log or (lambda message: print(message, flush=True))
     result = list(rows)
     methods: list[str] = []
     missing_zh = [index for index, row in enumerate(result) if row.english and not row.chinese]
     if missing_zh:
-        print(f"[4/5] 翻译英文 → 中文：{len(missing_zh)} 条", flush=True)
+        say(f"[4/5] 翻译英文 → 中文：{len(missing_zh)} 条")
         values, backend_label = translate_texts(
             [result[index].english for index in missing_zh], "en", "zh-CN",
-            lambda done, total: print(f"      翻译进度 {done}/{total}", flush=True),
+            lambda done, total: say(f"      翻译进度 {done}/{total}"),
             backends=backends,
         )
         result = apply_translations(result, missing_zh, values, "chinese")
@@ -273,10 +275,10 @@ def fill_missing_languages(
 
     missing_en = [index for index, row in enumerate(result) if row.chinese and not row.english]
     if missing_en:
-        print(f"[4/5] 翻译中文 → 英文：{len(missing_en)} 条", flush=True)
+        say(f"[4/5] 翻译中文 → 英文：{len(missing_en)} 条")
         values, backend_label = translate_texts(
             [result[index].chinese for index in missing_en], "zh-CN", "en",
-            lambda done, total: print(f"      翻译进度 {done}/{total}", flush=True),
+            lambda done, total: say(f"      翻译进度 {done}/{total}"),
             backends=backends,
         )
         result = apply_translations(result, missing_en, values, "english")
@@ -324,22 +326,32 @@ def download_audio(url: str, temp_dir: Path, browser: str) -> tuple[Path, dict]:
     return max(candidates, key=lambda path: path.stat().st_size), info
 
 
-def transcribe_audio(audio_path: Path, model_name: str) -> list[core.Caption]:
+DEFAULT_TRANSCRIBE_PROMPT = "Spoken English with clear pronunciation and complete sentences."
+
+
+def transcribe_audio(
+    audio_path: Path,
+    model_name: str,
+    *,
+    initial_prompt: str | None = None,
+    log: Callable[[str], None] | None = None,
+) -> list[core.Caption]:
     try:
         from faster_whisper import WhisperModel
     except ImportError as exc:
         raise RuntimeError("缺少 faster-whisper，请安装 requirements-whisper.txt") from exc
 
+    say = log or (lambda message: print(message, flush=True))
     threads = min(8, max(2, os.cpu_count() or 4))
-    print(f"[3/5] 加载 Whisper {model_name}（首次运行会下载模型）", flush=True)
+    say(f"[3/5] 加载 Whisper {model_name}（首次运行会下载模型）")
     model = WhisperModel(model_name, device="cpu", compute_type="int8", cpu_threads=threads)
     segments, info = model.transcribe(
         str(audio_path), language="en", task="transcribe", beam_size=5,
         vad_filter=True, condition_on_previous_text=True, word_timestamps=False,
         log_progress=True,
-        initial_prompt="English vocabulary lesson. Vocabulary in Use Advanced, Unit 14.",
+        initial_prompt=initial_prompt if initial_prompt is not None else DEFAULT_TRANSCRIBE_PROMPT,
     )
-    print(f"      检测语言：{info.language}（{info.language_probability:.1%}）", flush=True)
+    say(f"      检测语言：{info.language}（{info.language_probability:.1%}）")
     captions: list[core.Caption] = []
     for segment in segments:
         text = " ".join(str(segment.text).split())
@@ -348,7 +360,7 @@ def transcribe_audio(audio_path: Path, model_name: str) -> list[core.Caption]:
     if not captions:
         raise RuntimeError("Whisper 没有识别出语音内容")
     merged = merge_captions(captions)
-    print(f"      识别完成：{len(captions)} 个片段 → {len(merged)} 条阅读字幕", flush=True)
+    say(f"      识别完成：{len(captions)} 个片段 → {len(merged)} 条阅读字幕")
     return merged
 
 
@@ -373,6 +385,36 @@ def rows_from_native_tracks(url: str, browser: str) -> tuple[str, str, list[core
     )
 
 
+@dataclass(frozen=True)
+class AudioPipelineResult:
+    title: str
+    source_url: str
+    rows: list[core.BilingualRow]
+    methods: list[str]
+
+
+def generate_rows_from_audio(
+    url: str,
+    browser: str = "none",
+    model_name: str = "small.en",
+    log: Callable[[str], None] | None = None,
+) -> AudioPipelineResult:
+    """下载临时音频并转写成双语行（不翻译、不落盘）；网页模式与 CLI 共用。"""
+    say = log or (lambda message: print(message, flush=True))
+    say("[2/5] 下载临时音频（最终不会保留）")
+    with tempfile.TemporaryDirectory(prefix="bili-subtitle-") as temp:
+        audio_path, info = download_audio(url, Path(temp), browser)
+        size_mb = audio_path.stat().st_size / 1024 / 1024
+        say(f"      音频：{audio_path.suffix} · {size_mb:.1f} MB")
+        captions = transcribe_audio(audio_path, model_name, log=say)
+    return AudioPipelineResult(
+        title=str(info.get("title") or "B站视频"),
+        source_url=str(info.get("webpage_url") or url),
+        rows=core.align_captions(captions, []),
+        methods=[f"English：faster-whisper {model_name} 机器识别"],
+    )
+
+
 def generate(
     url: str,
     output_dir: Path,
@@ -387,16 +429,9 @@ def generate(
         title, source_url, rows, english_label, chinese_label = native
         methods.extend([f"English：{english_label}", f"中文：{chinese_label}"])
     else:
-        print("[2/5] 下载临时音频（最终不会保留）", flush=True)
-        with tempfile.TemporaryDirectory(prefix="bili-subtitle-") as temp:
-            audio_path, info = download_audio(normalized_url, Path(temp), browser)
-            size_mb = audio_path.stat().st_size / 1024 / 1024
-            print(f"      音频：{audio_path.suffix} · {size_mb:.1f} MB", flush=True)
-            captions = transcribe_audio(audio_path, model_name)
-        title = str(info.get("title") or "B站视频")
-        source_url = str(info.get("webpage_url") or normalized_url)
-        rows = core.align_captions(captions, [])
-        methods.append(f"English：faster-whisper {model_name} 机器识别")
+        audio = generate_rows_from_audio(normalized_url, browser, model_name)
+        title, source_url, rows = audio.title, audio.source_url, audio.rows
+        methods.extend(audio.methods)
 
     if translate:
         rows, translation_methods = fill_missing_languages(rows)

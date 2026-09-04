@@ -428,6 +428,29 @@ def sanitize_filename(value: str, fallback: str = "bilibili-subtitles") -> str:
     return (cleaned or fallback)[:100].rstrip(" .")
 
 
+def _srt_timestamp(seconds: float) -> str:
+    total_ms = max(0, round(float(seconds) * 1000))
+    hours, rem = divmod(total_ms, 3_600_000)
+    minutes, rem = divmod(rem, 60_000)
+    secs, millis = divmod(rem, 1000)
+    return f"{hours:02d}:{minutes:02d}:{secs:02d},{millis:03d}"
+
+
+def render_srt(rows: Sequence[BilingualRow]) -> str:
+    """标准双语 SRT：英文行在上、中文行在下，供播放器加载或二次处理。"""
+    blocks: list[str] = []
+    for index, row in enumerate(rows, start=1):
+        lines = [
+            str(index),
+            f"{_srt_timestamp(row.start)} --> {_srt_timestamp(row.end)}",
+            row.english,
+        ]
+        if row.chinese:
+            lines.append(row.chinese)
+        blocks.append("\n".join(lines))
+    return "\n\n".join(blocks) + "\n" if blocks else ""
+
+
 def render_markdown(
     title: str,
     source_url: str,

@@ -22,7 +22,7 @@ python -m launcher        # 或双击 run.bat / ./run.sh
 | 文本转语音 MP3 | 粘贴文本 → edge-tts 神经语音导出 MP3（默认存 IELTS 口语回答/音频） | http://127.0.0.1:8300 |
 | 口语跟读播放器 | MP3+词级时间轴卡拉OK跟读（本地预览；线上 http://47.108.230.162/script/speaking/ ） | http://127.0.0.1:8400 |
 | 走遍美国口语话题 | 剧集单元 → 188 个 IELTS 口语话题（题目+思路+词汇+中英对照范文；线上 http://47.108.230.162/script/topics/ ） | http://127.0.0.1:8500 |
-| B站双语字幕 | B站视频字幕轨 → 中英时间轴对齐 → 阅读预览 / Markdown / Excel | http://127.0.0.1:8600 |
+| B站双语字幕 | 字幕轨或英文语音识别 → 中英时间轴对齐 → 阅读预览 / Markdown / Excel / SRT | http://127.0.0.1:8600 |
 | Word→Markdown | .docx → GitHub 风格 Markdown（pandoc；图片抽到 图片和附件/，需装 pandoc） | http://127.0.0.1:8700 |
 
 （dics 为占位，待实现。）

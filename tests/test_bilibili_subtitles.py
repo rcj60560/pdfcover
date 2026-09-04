@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import sys
 import importlib.util
+import threading
 from io import BytesIO
 from pathlib import Path
 from xml.etree import ElementTree as ET
@@ -14,15 +15,17 @@ BASE = Path(__file__).parents[1] / "tools" / "bilibili-subtitles"
 sys.path.insert(0, str(BASE))
 
 import subtitle_core as core  # noqa: E402
-from extractor import collect_tracks  # noqa: E402
+from extractor import ExtractionError, collect_tracks, extract_video  # noqa: E402
 from xlsx_export import build_xlsx  # noqa: E402
 from direct_generate import (  # noqa: E402
+    DEFAULT_TRANSCRIBE_PROMPT,
     apply_translations,
     fill_missing_languages,
     join_parts,
     merge_captions,
     split_for_limit,
     split_methods,
+    transcribe_audio,
     translate_texts,
 )
 
@@ -96,6 +99,94 @@ def test_whisper_captions_merge_for_reading_and_translation_apply():
     rows = core.align_captions(merged, [])
     translated = apply_translations(rows, [0, 1], ["这是一个句子。", "新的部分。"], "chinese")
     assert [row.chinese for row in translated] == ["这是一个句子。", "新的部分。"]
+
+
+def _install_fake_whisper(monkeypatch):
+    """注入假 faster_whisper：transcribe_audio 不加载真模型即可验证调用契约。"""
+    import types
+
+    calls = {}
+
+    class FakeWhisperModel:
+        def __init__(self, model_name, **kwargs):
+            calls["model"] = model_name
+
+        def transcribe(self, audio_path, **kwargs):
+            calls["kwargs"] = kwargs
+            segment = types.SimpleNamespace(start=0.0, end=2.4, text=" Hello there ")
+            info = types.SimpleNamespace(language="en", language_probability=0.98)
+            return [segment], info
+
+    fake = types.ModuleType("faster_whisper")
+    fake.WhisperModel = FakeWhisperModel
+    monkeypatch.setitem(sys.modules, "faster_whisper", fake)
+    return calls
+
+
+def test_transcribe_audio_sends_generic_prompt_and_logs_progress(monkeypatch, tmp_path):
+    calls = _install_fake_whisper(monkeypatch)
+    logs = []
+    captions = transcribe_audio(tmp_path / "a.m4a", "small.en", log=logs.append)
+
+    assert calls["model"] == "small.en"
+    assert calls["kwargs"]["language"] == "en"
+    assert calls["kwargs"]["initial_prompt"] == DEFAULT_TRANSCRIBE_PROMPT
+    assert "Vocabulary" not in DEFAULT_TRANSCRIBE_PROMPT and "Unit" not in DEFAULT_TRANSCRIBE_PROMPT
+    assert captions == [cue(0.0, 2.4, "Hello there")]
+    assert any("识别完成" in line for line in logs)
+
+
+def test_transcribe_audio_accepts_custom_prompt(monkeypatch, tmp_path):
+    calls = _install_fake_whisper(monkeypatch)
+    transcribe_audio(tmp_path / "a.m4a", "base.en", initial_prompt="A physics lecture.")
+    assert calls["kwargs"]["initial_prompt"] == "A physics lecture."
+
+
+def test_generate_rows_from_audio_downloads_transcribes_and_returns_rows(monkeypatch, tmp_path):
+    import direct_generate
+
+    logs = []
+    fake_audio = tmp_path / "fake.m4a"
+    fake_audio.write_bytes(b"audio-bytes")
+    monkeypatch.setattr(direct_generate, "download_audio", lambda url, temp_dir, browser: (
+        fake_audio,
+        {"title": "English Video", "webpage_url": "https://www.bilibili.com/video/BV1pgtn6NENb"},
+    ))
+    monkeypatch.setattr(direct_generate, "transcribe_audio",
+                        lambda audio_path, model_name, **kwargs: [cue(0, 2, "Hello world.")])
+
+    result = direct_generate.generate_rows_from_audio(
+        "https://www.bilibili.com/video/BV1pgtn6NENb", "none", "small.en", log=logs.append)
+
+    assert result.title == "English Video"
+    assert result.source_url.endswith("BV1pgtn6NENb")
+    assert result.rows == [core.BilingualRow(0, 2, "Hello world.", "")]
+    assert result.methods == ["English：faster-whisper small.en 机器识别"]
+    assert any("下载" in line for line in logs)
+
+
+def test_generate_cli_writes_outputs_via_audio_pipeline(monkeypatch, tmp_path):
+    import direct_generate
+
+    monkeypatch.setattr(direct_generate, "rows_from_native_tracks", lambda url, browser: None)
+    fake_audio = tmp_path / "a.m4a"
+    fake_audio.write_bytes(b"audio-bytes")
+    monkeypatch.setattr(direct_generate, "download_audio", lambda url, temp_dir, browser: (
+        fake_audio,
+        {"title": "CLI 标题", "webpage_url": "https://www.bilibili.com/video/BV1pgtn6NENb"},
+    ))
+    monkeypatch.setattr(direct_generate, "transcribe_audio",
+                        lambda audio_path, model_name, **kwargs: [cue(0, 2, "Hello there.")])
+    monkeypatch.setattr(direct_generate, "fill_missing_languages", lambda rows, backends=None: (
+        [core.BilingualRow(0, 2, "Hello there.", "你好。")], ["中文：Fake 机器翻译"],
+    ))
+
+    md_path, xlsx_path = direct_generate.generate("BV1pgtn6NENb", tmp_path)
+
+    assert md_path.exists() and xlsx_path.exists()
+    content = md_path.read_text(encoding="utf-8")
+    assert "Hello there." in content and "你好。" in content
+    assert "faster-whisper" in content and "Fake" in content
 
 
 def test_build_rows_from_same_bilingual_track():
@@ -206,6 +297,20 @@ def test_fill_missing_languages_reports_backend_label():
     assert methods and "MyMemory" in methods[0] and "机器翻译" in methods[0]
 
 
+def test_fill_missing_languages_reports_progress_via_log():
+    logs = []
+    rows = [core.BilingualRow(0, 2, "Hello.", ""), core.BilingualRow(2, 4, "World.", "")]
+
+    def working(_text):
+        return "你好。"
+
+    filled, _methods = fill_missing_languages(
+        rows, backends=[("Fake", working, 480)], log=logs.append)
+
+    assert [row.chinese for row in filled] == ["你好。", "你好。"]
+    assert any("2/2" in line for line in logs)
+
+
 def test_build_backends_skips_unreachable_google(monkeypatch):
     pytest.importorskip("deep_translator")
     import direct_generate
@@ -232,6 +337,66 @@ def test_split_methods_separates_language_labels():
     assert split_methods([]) == ("", "")
 
 
+def _install_fake_ytdlp(monkeypatch, info, warning=""):
+    """注入假 yt_dlp：extract_video 不触网即可测各种 info/warning 组合。"""
+    import types
+
+    class FakeYoutubeDL:
+        def __init__(self, options):
+            self._logger = options.get("logger")
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *args):
+            return False
+
+        def extract_info(self, url, download):
+            if warning:
+                self._logger.warning(warning)
+            return info
+
+    fake = types.ModuleType("yt_dlp")
+    fake.YoutubeDL = FakeYoutubeDL
+    monkeypatch.setitem(sys.modules, "yt_dlp", fake)
+
+
+def test_extract_video_without_tracks_returns_video_for_transcription(monkeypatch):
+    info = {
+        "title": "English Talk",
+        "webpage_url": "https://www.bilibili.com/video/BV1pgtn6NENb",
+        "duration": 120,
+        "subtitles": {},
+        "automatic_captions": {},
+    }
+    _install_fake_ytdlp(monkeypatch, info)
+    video = extract_video("BV1pgtn6NENb")
+    assert video.tracks == ()
+    assert video.title == "English Talk"
+    assert any("语音识别" in warning or "Whisper" in warning for warning in video.warnings)
+
+
+def test_extract_video_still_raises_when_login_required(monkeypatch):
+    info = {"title": "t", "subtitles": {}, "automatic_captions": {}}
+    _install_fake_ytdlp(monkeypatch, info, warning="Please login to view subtitles")
+    with pytest.raises(ExtractionError, match="登录"):
+        extract_video("BV1pgtn6NENb", "none")
+
+
+def test_extract_video_returns_empty_tracks_when_logged_in(monkeypatch):
+    info = {"title": "t", "subtitles": {}, "automatic_captions": {}}
+    _install_fake_ytdlp(monkeypatch, info, warning="Please login to view subtitles")
+    video = extract_video("BV1pgtn6NENb", "edge")
+    assert video.tracks == ()
+
+
+def test_friendly_error_maps_bilibili_412_to_retry_hint():
+    from extractor import _friendly_error
+
+    message = _friendly_error(RuntimeError("HTTP Error 412: Precondition Failed"), "none")
+    assert "稍后再试" in message and "登录状态" in message
+
+
 def test_collect_tracks_ignores_danmaku_and_deduplicates():
     srt = "1\n00:00:00,000 --> 00:00:01,000\nHello there\n"
     info = {
@@ -248,15 +413,44 @@ def test_collect_tracks_ignores_danmaku_and_deduplicates():
 
 def test_markdown_is_bilingual_subtitle_style():
     rows = [core.BilingualRow(1.2, 3.4, "Hello.", "你好。")]
-    text = core.render_markdown("标题", "https://www.bilibili.com/video/BV1x", rows, "English", "中文")
+    text = core.render_markdown("标题", "https://www.bilibili.com/video/BV1pgtn6NENb", rows, "English", "中文")
     assert text.startswith("# 标题\n")
     assert "`00:00:01 → 00:00:03`" in text
     assert "**Hello.**" in text and "你好。" in text
 
 
+def test_render_srt_is_standard_bilingual_format():
+    rows = [
+        core.BilingualRow(1.2, 3.4, "Hello world.", "你好，世界"),
+        core.BilingualRow(3.4, 5.0, "Second line.", ""),
+    ]
+    text = core.render_srt(rows)
+    blocks = text.strip().split("\n\n")
+    assert len(blocks) == 2
+    assert blocks[0].splitlines() == [
+        "1",
+        "00:00:01,200 --> 00:00:03,400",
+        "Hello world.",
+        "你好，世界",
+    ]
+    assert blocks[1].splitlines() == [
+        "2",
+        "00:00:03,400 --> 00:00:05,000",
+        "Second line.",
+    ]
+    assert text.endswith("\n")
+
+
+def test_render_srt_pads_hours_and_holds_long_durations():
+    rows = [core.BilingualRow(0, 3661.5, "Long video.", "长视频。")]
+    lines = core.render_srt(rows).strip().splitlines()
+    assert lines[1] == "00:00:00,000 --> 01:01:01,500"
+    assert lines[2] == "Long video."
+
+
 def test_xlsx_package_has_readable_sheet_freeze_filter_and_time_style():
     rows = [core.BilingualRow(1.25, 3.5, "Hello world", "你好，世界")]
-    data = build_xlsx("视频标题", "https://www.bilibili.com/video/BV1x", rows)
+    data = build_xlsx("视频标题", "https://www.bilibili.com/video/BV1pgtn6NENb", rows)
     with ZipFile(BytesIO(data)) as archive:
         assert archive.testzip() is None
         names = set(archive.namelist())
@@ -272,7 +466,7 @@ def test_xlsx_package_has_readable_sheet_freeze_filter_and_time_style():
 
 def test_xlsx_uses_shared_strings_and_theme_for_viewer_compatibility():
     rows = [core.BilingualRow(1.0, 2.5, "Hello world", "你好，世界")]
-    data = build_xlsx("视频标题", "https://www.bilibili.com/video/BV1x", rows)
+    data = build_xlsx("视频标题", "https://www.bilibili.com/video/BV1pgtn6NENb", rows)
     with ZipFile(BytesIO(data)) as archive:
         names = set(archive.namelist())
         assert "xl/sharedStrings.xml" in names
@@ -325,6 +519,140 @@ def test_web_generate_and_download_endpoints():
     assert workbook.status_code == 200
     with ZipFile(BytesIO(workbook.data)) as archive:
         assert archive.testzip() is None
+
+
+def _load_web():
+    spec = importlib.util.spec_from_file_location("bilibili_subtitles_web", BASE / "app.py")
+    assert spec and spec.loader
+    web = importlib.util.module_from_spec(spec)
+    sys.modules[spec.name] = web
+    spec.loader.exec_module(web)
+    return web
+
+
+def _no_track_video(title="无字幕英文视频"):
+    from extractor import ExtractedVideo
+
+    return ExtractedVideo(title, "https://www.bilibili.com/video/BV1pgtn6NENb", "tester", 10.0, ())
+
+
+def test_transcribe_job_lifecycle_and_srt_download(monkeypatch):
+    from direct_generate import AudioPipelineResult
+
+    web = _load_web()
+    job_id = web.jobs.put(web.Job(video=_no_track_video()))
+    monkeypatch.setattr(web, "_whisper_deps_missing", lambda: None)
+
+    def fake_pipeline(url, browser, model_name, log=None):
+        if log:
+            log("[2/5] 下载临时音频（测试）")
+        return AudioPipelineResult(
+            title="无字幕英文视频",
+            source_url="https://www.bilibili.com/video/BV1pgtn6NENb",
+            rows=[core.BilingualRow(0, 2, "Hello there.", "")],
+            methods=["English：faster-whisper small.en 机器识别"],
+        )
+
+    monkeypatch.setattr(web, "TRANSCRIBE_PIPELINE", fake_pipeline)
+    monkeypatch.setattr(web, "TRANSLATE_ROWS", lambda rows, log=None: (
+        [core.BilingualRow(0, 2, "Hello there.", "你好。")], ["中文：Fake 机器翻译"],
+    ))
+
+    client = web.app.test_client()
+    started = client.post(f"/api/jobs/{job_id}/transcribe", json={"browser": "none"})
+    assert started.status_code == 200 and started.get_json()["ok"]
+
+    web.jobs.get(job_id).transcribe_thread.join(timeout=5)
+
+    body = client.get(f"/api/jobs/{job_id}/transcribe/status").get_json()
+    assert body["phase"] == "done" and body["error"] == ""
+    assert body["count"] == 1 and body["has_english"] and body["has_chinese"]
+    assert any("下载临时音频" in line for line in body["log"])
+
+    srt = client.get(f"/api/jobs/{job_id}/download/srt")
+    assert srt.status_code == 200
+    text = srt.get_data(as_text=True)
+    assert "00:00:00,000 --> 00:00:02,000" in text
+    assert "Hello there." in text and "你好。" in text
+
+    markdown = client.get(f"/api/jobs/{job_id}/download/md")
+    assert markdown.status_code == 200
+    assert "faster-whisper" in markdown.get_data(as_text=True)
+
+
+def test_transcribe_job_reports_pipeline_error(monkeypatch):
+    web = _load_web()
+    job_id = web.jobs.put(web.Job(video=_no_track_video()))
+    monkeypatch.setattr(web, "_whisper_deps_missing", lambda: None)
+
+    def broken(url, browser, model_name, log=None):
+        raise RuntimeError("下载音频失败（测试）")
+
+    monkeypatch.setattr(web, "TRANSCRIBE_PIPELINE", broken)
+    client = web.app.test_client()
+    assert client.post(f"/api/jobs/{job_id}/transcribe", json={}).status_code == 200
+    web.jobs.get(job_id).transcribe_thread.join(timeout=5)
+
+    body = client.get(f"/api/jobs/{job_id}/transcribe/status").get_json()
+    assert body["phase"] == "error"
+    assert "下载音频失败（测试）" in body["error"]
+
+
+def test_transcribe_rejects_duplicate_start(monkeypatch):
+    from direct_generate import AudioPipelineResult
+
+    web = _load_web()
+    job_id = web.jobs.put(web.Job(video=_no_track_video()))
+    monkeypatch.setattr(web, "_whisper_deps_missing", lambda: None)
+    release = threading.Event()
+    pipeline_started = threading.Event()
+
+    def slow_pipeline(url, browser, model_name, log=None):
+        pipeline_started.set()
+        release.wait(5)
+        return AudioPipelineResult(
+            "t", "https://www.bilibili.com/video/BV1pgtn6NENb",
+            [core.BilingualRow(0, 1, "Hi", "")], [],
+        )
+
+    monkeypatch.setattr(web, "TRANSCRIBE_PIPELINE", slow_pipeline)
+    client = web.app.test_client()
+    assert client.post(f"/api/jobs/{job_id}/transcribe", json={}).status_code == 200
+    assert pipeline_started.wait(5)
+    duplicate = client.post(f"/api/jobs/{job_id}/transcribe", json={})
+    assert duplicate.status_code == 409
+    release.set()
+    web.jobs.get(job_id).transcribe_thread.join(timeout=5)
+
+
+def test_transcribe_rejects_when_dependencies_missing(monkeypatch):
+    web = _load_web()
+    job_id = web.jobs.put(web.Job(video=_no_track_video()))
+    monkeypatch.setattr(web, "_whisper_deps_missing", lambda: "缺少 faster-whisper（测试）")
+    client = web.app.test_client()
+    response = client.post(f"/api/jobs/{job_id}/transcribe", json={})
+    assert response.status_code == 400
+    assert "faster-whisper" in response.get_json()["error"]
+
+
+def test_transcribe_unknown_job_returns_404():
+    web = _load_web()
+    client = web.app.test_client()
+    assert client.post("/api/jobs/nope/transcribe", json={}).status_code == 404
+    assert client.get("/api/jobs/nope/transcribe/status").status_code == 404
+
+
+def test_inspect_returns_transcribable_video_without_tracks(monkeypatch):
+    web = _load_web()
+    monkeypatch.setattr(web, "extract_video", lambda url, browser: _no_track_video("纯英文口播"))
+    client = web.app.test_client()
+    response = client.post("/api/inspect", json={
+        "url": "https://www.bilibili.com/video/BV1pgtn6NENb", "browser": "none",
+    })
+    assert response.status_code == 200
+    body = response.get_json()
+    assert body["ok"] and body["tracks"] == []
+    assert body["can_transcribe"] is True
 
 
 def test_manifest_discovers_bilibili_subtitles():
