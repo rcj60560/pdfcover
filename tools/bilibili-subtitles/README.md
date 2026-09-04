@@ -25,6 +25,7 @@ python app.py
 4. 没有字幕轨时（英文口播视频），点「识别英文语音并生成双语字幕」：后台下载临时音频（识别完自动删除，不下载视频）→ `faster-whisper small.en` 转写 → 机器翻译补中文，页面实时显示进度；需要先装 `requirements-whisper.txt`。
 5. 生成后直接在电脑的大字幕阅读页对照看，也可以搜索、调字号、复制 Markdown。
 6. 下载 `.md`、`.xlsx` 或双语 `.srt`（标准字幕格式，带时间戳，方便播放器加载或二次处理）。Excel 内含标题、来源、真实时间值、冻结表头、筛选和自动换行。
+7. 阅读页可把字幕**转成 MP3 音频**：选英文/中文全文、语音（微软神经语音）、语速，后台分片合成后下载；复用「文本转语音 MP3」工具的 edge-tts 核心（见下方 tts_bridge）。
 
 ## 直接给链接生成文件（含无字幕视频兜底）
 
@@ -58,6 +59,7 @@ python tools/bilibili-subtitles/direct_generate.py "https://www.bilibili.com/vid
 - 语音识别任务在内存中运行，刷新页面会丢进度，需要重新识别；识别 + 翻译全程约几分钟（20 分钟视频约 8 分钟），请保持页面打开。
 - 中文语音视频暂不支持自动转写（Whisper 模型用 `small.en`，仅英文）。
 - 机器翻译用 Google Translate / MyMemory 后端链（自动探测切换），结果需要抽查；MyMemory 对习语（如 over the moon）可能直译。
+- 「转 MP3」依赖兄弟工具 `tools/text2mp3/` 的 `tts_core.py`（模块互调只发生在核心逻辑层，两个网页应用保持独立）；需要安装 `tools/text2mp3/requirements.txt`（edge-tts）。缺依赖时页面给出安装提示，其余功能不受影响。
 - 画面里烧录的字幕不会做 OCR；无字幕轨时识别的是音频内容。
 - Excel 由纯标准库生成，采用 Excel 原生的 sharedStrings + theme 形态（预览窗格 / 手机端 / 微信 QQ 预览等轻量查看器也兼容；早期 inlineStr 版本在部分查看器里显示空白）。
 - 时间轴对齐依赖两条字幕自身的时间，极少数切分差异特别大的视频可能需要人工微调。
@@ -72,6 +74,7 @@ python tools/bilibili-subtitles/direct_generate.py "https://www.bilibili.com/vid
 | `subtitle_core.py` | 字幕解析、语言识别、双语拆分、时间轴对齐、Markdown、SRT |
 | `xlsx_export.py` | 标准 OOXML Excel 导出（无需额外 Excel 库） |
 | `direct_generate.py` | 管线核心（音频下载 → Whisper 转写 → 翻译）；一条命令直接输出文件 |
+| `tts_bridge.py` | 引用 text2mp3 的 tts_core：行→朗读文本、分片合成、拼接 MP3 |
 | `templates/index.html` / `static/*` | 电脑端双语阅读界面与语音识别进度 |
 
 离线单测在根目录 `tests/test_bilibili_subtitles.py`；测试不访问 B 站。

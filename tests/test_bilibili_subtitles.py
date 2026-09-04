@@ -536,6 +536,70 @@ def _no_track_video(title="无字幕英文视频"):
     return ExtractedVideo(title, "https://www.bilibili.com/video/BV1pgtn6NENb", "tester", 10.0, ())
 
 
+def test_rows_to_speech_text_picks_column_and_skips_empty():
+    import tts_bridge
+
+    rows = [
+        core.BilingualRow(0, 2, "Hello there.", "你好。"),
+        core.BilingualRow(2, 4, "", "只有中文"),
+    ]
+    assert tts_bridge.rows_to_speech_text(rows, "english") == "Hello there."
+    assert tts_bridge.rows_to_speech_text(rows, "chinese") == "你好。 只有中文"
+    assert tts_bridge.rows_to_speech_text([], "english") == ""
+    with pytest.raises(ValueError):
+        tts_bridge.rows_to_speech_text(rows, "japanese")
+
+
+def test_missing_tts_dependency_reports_hint_when_core_absent(monkeypatch):
+    import tts_bridge
+
+    def broken():
+        raise RuntimeError("缺模块")
+
+    monkeypatch.setattr(tts_bridge, "load_tts_core", broken)
+    assert tts_bridge.missing_tts_dependency() == "缺模块"
+    assert tts_bridge.missing_tts_dependency() is not None
+
+
+def test_missing_tts_dependency_none_when_available():
+    import tts_bridge
+
+    if tts_bridge.missing_tts_dependency() is None:
+        return  # 依赖齐全
+    pytest.skip("edge-tts 未安装，跳过可用分支")
+
+
+def test_synthesize_chunks_splits_concatenates_and_reports_progress(tmp_path):
+    import tts_bridge
+    from direct_generate import split_for_limit
+
+    synthesized = []
+
+    async def fake_synth(text, voice, rate, pitch, mp3_path, translation=""):
+        synthesized.append(text)
+        mp3_path.write_bytes(f"[{text}]".encode("utf-8"))
+        return mp3_path.with_suffix(".json")
+
+    text = "Sentence one here. Sentence two follows! Third one? "
+    progress_calls = []
+    data = tts_bridge.synthesize_chunks(
+        text, "en-US-AvaMultilingualNeural", "+0%", "+0Hz",
+        limit=25, work_dir=tmp_path, synthesize=fake_synth,
+        progress=lambda done, total: progress_calls.append((done, total)),
+    )
+
+    chunks = split_for_limit(text, 25)
+    assert len(chunks) >= 2
+    assert synthesized == chunks
+    expected = "".join(f"[{chunk}]" for chunk in chunks).encode("utf-8")
+    assert data == expected
+    assert progress_calls == [(index, len(chunks)) for index in range(1, len(chunks) + 1)]
+    # 临时分片不留在工作目录之外，工作目录内合成完只剩分片文件（由调用方清理）
+    assert sorted(p.name for p in tmp_path.glob("part-*.mp3")) == [
+        f"part-{index:03d}.mp3" for index in range(1, len(chunks) + 1)
+    ]
+
+
 def test_transcribe_job_lifecycle_and_srt_download(monkeypatch):
     from direct_generate import AudioPipelineResult
 
@@ -568,6 +632,7 @@ def test_transcribe_job_lifecycle_and_srt_download(monkeypatch):
     assert body["phase"] == "done" and body["error"] == ""
     assert body["count"] == 1 and body["has_english"] and body["has_chinese"]
     assert any("下载临时音频" in line for line in body["log"])
+    assert body["stage"]["step"] == 4
 
     srt = client.get(f"/api/jobs/{job_id}/download/srt")
     assert srt.status_code == 200
@@ -653,6 +718,131 @@ def test_inspect_returns_transcribable_video_without_tracks(monkeypatch):
     body = response.get_json()
     assert body["ok"] and body["tracks"] == []
     assert body["can_transcribe"] is True
+
+
+def test_derive_transcribe_stage_steps_and_translation_detail():
+    web = _load_web()
+    assert web.derive_transcribe_stage(["[2/5] 下载临时音频（最终不会保留）"])["step"] == 1
+    assert web.derive_transcribe_stage(["[3/5] 加载 Whisper small.en"])["step"] == 2
+    stage = web.derive_transcribe_stage([
+        "[2/5] 下载临时音频",
+        "      识别完成：120 个片段 → 40 条阅读字幕",
+        "[4/5] 翻译英文 → 中文：40 条",
+        "      翻译进度 12/40",
+    ])
+    assert stage["step"] == 3
+    assert stage["detail"] == "翻译 12/40"
+    assert web.derive_transcribe_stage([]) == {"step": 0, "detail": ""}
+
+
+def test_tts_job_lifecycle_and_mp3_download(monkeypatch):
+    web = _load_web()
+    job_id = web.jobs.put(web.Job(video=_no_track_video("TTS 视频")))
+    web.jobs.get(job_id).rows = [core.BilingualRow(0, 2, "Hello there.", "你好。")]
+    monkeypatch.setattr(web, "_tts_deps_missing", lambda: None)
+
+    calls = {}
+
+    def fake_synthesize(text, voice, rate, pitch, work_dir, progress=None):
+        calls.update(text=text, voice=voice, rate=rate, pitch=pitch)
+        if progress:
+            progress(1, 2)
+            progress(2, 2)
+        return b"ID3-fake-mp3-bytes"
+
+    monkeypatch.setattr(web, "TTS_SYNTHESIZE", fake_synthesize)
+
+    client = web.app.test_client()
+    started = client.post(f"/api/jobs/{job_id}/tts", json={
+        "lang": "english", "voice": "en-US-AvaMultilingualNeural", "rate": -10,
+    })
+    assert started.status_code == 200 and started.get_json()["ok"]
+    web.jobs.get(job_id).tts_thread.join(timeout=5)
+
+    body = client.get(f"/api/jobs/{job_id}/tts/status").get_json()
+    assert body["phase"] == "done" and body["error"] == ""
+    assert body["done"] == 2 and body["total"] == 2
+    assert calls["text"] == "Hello there."
+    assert calls["rate"] == "-10%" and calls["pitch"] == "+0Hz"
+
+    mp3 = client.get(f"/api/jobs/{job_id}/download/mp3")
+    assert mp3.status_code == 200
+    assert mp3.data == b"ID3-fake-mp3-bytes"
+    assert mp3.mimetype == "audio/mpeg"
+    assert ".mp3" in mp3.headers.get("Content-Disposition", "")
+
+
+def test_tts_rejects_when_no_rows(monkeypatch):
+    web = _load_web()
+    job_id = web.jobs.put(web.Job(video=_no_track_video()))
+    monkeypatch.setattr(web, "_tts_deps_missing", lambda: None)
+    client = web.app.test_client()
+    response = client.post(f"/api/jobs/{job_id}/tts", json={"lang": "english"})
+    assert response.status_code == 400
+    assert "字幕" in response.get_json()["error"]
+
+
+def test_tts_rejects_invalid_language_and_voice(monkeypatch):
+    web = _load_web()
+    job_id = web.jobs.put(web.Job(video=_no_track_video()))
+    web.jobs.get(job_id).rows = [core.BilingualRow(0, 2, "Hi", "你好")]
+    monkeypatch.setattr(web, "_tts_deps_missing", lambda: None)
+    client = web.app.test_client()
+    bad_lang = client.post(f"/api/jobs/{job_id}/tts", json={"lang": "japanese"})
+    assert bad_lang.status_code == 400
+    bad_voice = client.post(f"/api/jobs/{job_id}/tts", json={"lang": "english", "voice": "voice-not-exist"})
+    assert bad_voice.status_code == 400
+
+
+def test_tts_rejects_when_dependencies_missing(monkeypatch):
+    web = _load_web()
+    job_id = web.jobs.put(web.Job(video=_no_track_video()))
+    web.jobs.get(job_id).rows = [core.BilingualRow(0, 2, "Hi", "你好")]
+    monkeypatch.setattr(web, "_tts_deps_missing", lambda: "缺少 edge-tts（测试）")
+    client = web.app.test_client()
+    response = client.post(f"/api/jobs/{job_id}/tts", json={"lang": "english"})
+    assert response.status_code == 400
+    assert "edge-tts" in response.get_json()["error"]
+
+
+def test_tts_rejects_duplicate_start(monkeypatch):
+    web = _load_web()
+    job_id = web.jobs.put(web.Job(video=_no_track_video()))
+    web.jobs.get(job_id).rows = [core.BilingualRow(0, 2, "Hi", "你好")]
+    monkeypatch.setattr(web, "_tts_deps_missing", lambda: None)
+    release = threading.Event()
+    started = threading.Event()
+
+    def slow_synthesize(text, voice, rate, pitch, work_dir, progress=None):
+        started.set()
+        release.wait(5)
+        return b"mp3"
+
+    monkeypatch.setattr(web, "TTS_SYNTHESIZE", slow_synthesize)
+    client = web.app.test_client()
+    assert client.post(f"/api/jobs/{job_id}/tts", json={"lang": "english"}).status_code == 200
+    assert started.wait(5)
+    assert client.post(f"/api/jobs/{job_id}/tts", json={"lang": "english"}).status_code == 409
+    release.set()
+    web.jobs.get(job_id).tts_thread.join(timeout=5)
+
+
+def test_tts_unknown_job_returns_404():
+    web = _load_web()
+    client = web.app.test_client()
+    assert client.post("/api/jobs/nope/tts", json={}).status_code == 404
+    assert client.get("/api/jobs/nope/tts/status").status_code == 404
+
+
+def test_tts_voices_endpoint_lists_text2mp3_voices():
+    web = _load_web()
+    client = web.app.test_client()
+    response = client.get("/api/tts/voices")
+    assert response.status_code == 200
+    body = response.get_json()
+    assert body["ok"] and len(body["voices"]) >= 10
+    assert any("Ava" in voice["id"] for voice in body["voices"])
+    assert all(set(voice) == {"label", "id"} for voice in body["voices"])
 
 
 def test_manifest_discovers_bilibili_subtitles():

@@ -65,6 +65,12 @@
         </p>
         <button class="primary generate" id="transcribe-button" type="button">识别英文语音并生成双语字幕</button>
         <div id="transcribe-progress" class="transcribe-progress" hidden>
+          <ol class="step-track" id="transcribe-steps">
+            <li class="step" data-step="1">下载音频</li>
+            <li class="step" data-step="2">Whisper 转写</li>
+            <li class="step" data-step="3">机器翻译</li>
+            <li class="step" data-step="4">完成</li>
+          </ol>
           <div class="progress-head">
             <span class="progress-dot" aria-hidden="true"></span>
             <span id="transcribe-phase">准备中…</span>
@@ -97,9 +103,41 @@
           <a class="export md" id="download-md">下载 Markdown</a>
           <a class="export xlsx" id="download-xlsx">下载 Excel</a>
           <a class="export srt" id="download-srt">下载 SRT</a>
+          <button class="export tts" id="tts-button" type="button">转 MP3 音频</button>
         </div>
       </div>
       <div id="reader-notice" class="notice" hidden></div>
+      <section id="tts-panel" class="tts-panel" hidden>
+        <h3>字幕转 MP3（借用「文本转语音 MP3」的 edge-tts 核心）</h3>
+        <div class="tts-controls">
+          <label>朗读内容
+            <select id="tts-lang">
+              <option value="english" selected>英文全文</option>
+              <option value="chinese">中文全文</option>
+            </select>
+          </label>
+          <label>语音 <select id="tts-voice"></select></label>
+          <label>语速
+            <select id="tts-rate">
+              <option value="-20">慢 -20%</option>
+              <option value="-10">稍慢 -10%</option>
+              <option value="0" selected>正常</option>
+              <option value="10">稍快 +10%</option>
+              <option value="20">快 +20%</option>
+            </select>
+          </label>
+          <button class="primary" id="tts-start" type="button">开始合成</button>
+        </div>
+        <p class="tts-hint" id="tts-hint" hidden></p>
+        <div id="tts-progress" class="transcribe-progress" hidden>
+          <div class="progress-head">
+            <span class="progress-dot" aria-hidden="true"></span>
+            <span id="tts-phase">合成中…</span>
+          </div>
+          <pre id="tts-log" class="transcribe-log"></pre>
+        </div>
+        <a class="export tts" id="tts-download" hidden>下载 MP3</a>
+      </section>
       <div class="reader-toolbar">
         <label class="search-wrap">
           <span aria-hidden="true">⌕</span>

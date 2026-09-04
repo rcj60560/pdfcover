@@ -7,6 +7,7 @@ const state = {
 };
 
 let transcribeTimer = null;
+let ttsTimer = null;
 
 function setStatus(message, type = "loading") {
   const box = $("status");
@@ -58,6 +59,27 @@ function resetTranscribePanel() {
   $("transcribe-progress").hidden = true;
   $("transcribe-phase").textContent = "准备中…";
   $("transcribe-log").textContent = "";
+  renderStepTrack(null);
+}
+
+function renderStepTrack(stage) {
+  const active = stage ? Number(stage.step) || 0 : 0;
+  document.querySelectorAll("#transcribe-steps .step").forEach((step) => {
+    const order = Number(step.dataset.step);
+    step.classList.toggle("active", order === active);
+    step.classList.toggle("done", order < active);
+  });
+  const detail = $("transcribe-phase");
+  if (stage && stage.detail) detail.textContent = stage.detail;
+}
+
+function resetTtsPanel() {
+  if (ttsTimer) { window.clearTimeout(ttsTimer); ttsTimer = null; }
+  $("tts-panel").hidden = true;
+  $("tts-start").disabled = false;
+  $("tts-progress").hidden = true;
+  $("tts-log").textContent = "";
+  $("tts-download").hidden = true;
 }
 
 function renderInspection(data) {
@@ -88,6 +110,7 @@ function renderInspection(data) {
   document.querySelector("#generate-button").hidden = canTranscribe;
   $("transcribe-offer").hidden = !canTranscribe;
   resetTranscribePanel();
+  resetTtsPanel();
 
   $("tracks-panel").hidden = false;
   $("reader").hidden = true;
@@ -195,6 +218,7 @@ async function pollTranscribe() {
     data = await response.json().catch(() => ({ ok: false, error: `HTTP ${response.status}` }));
     if (!response.ok || !data.ok) throw new Error(data.error || "查询进度失败");
     $("transcribe-phase").textContent = TRANSCRIBE_PHASE_TEXT[data.phase] || data.phase;
+    renderStepTrack(data.stage);
     if (data.log && data.log.length) {
       const logBox = $("transcribe-log");
       logBox.textContent = data.log.join("\n") + "\n";
@@ -286,4 +310,88 @@ $("font-smaller").addEventListener("click", () => changeFont(-.1));
 $("font-larger").addEventListener("click", () => changeFont(.1));
 $("copy-md").addEventListener("click", copyMarkdown);
 $("to-top").addEventListener("click", () => $("reader").scrollIntoView({ behavior: "smooth" }));
+$("tts-button").addEventListener("click", async () => {
+  $("tts-panel").hidden = false;
+  $("tts-panel").scrollIntoView({ behavior: "smooth", block: "start" });
+  await loadTtsVoices();
+});
+$("tts-start").addEventListener("click", startTts);
 restoreForm();
+
+async function loadTtsVoices() {
+  const select = $("tts-voice");
+  if (select.options.length) return;
+  const hint = $("tts-hint");
+  try {
+    const response = await fetch("/api/tts/voices");
+    const data = await response.json().catch(() => ({ ok: false }));
+    if (!response.ok || !data.ok) throw new Error(data.error || `HTTP ${response.status}`);
+    for (const voice of data.voices) {
+      const option = document.createElement("option");
+      option.value = voice.id;
+      option.textContent = voice.label;
+      select.append(option);
+    }
+    hint.hidden = true;
+  } catch (error) {
+    hint.hidden = false;
+    hint.textContent = `语音列表加载失败：${error.message}`;
+    $("tts-start").disabled = true;
+  }
+}
+
+async function startTts() {
+  const start = $("tts-start");
+  start.disabled = true;
+  $("tts-progress").hidden = false;
+  $("tts-download").hidden = true;
+  $("tts-phase").textContent = "正在启动合成…";
+  $("tts-log").textContent = "";
+  try {
+    await api(`/api/jobs/${state.jobId}/tts`, {
+      lang: $("tts-lang").value,
+      voice: $("tts-voice").value,
+      rate: Number($("tts-rate").value),
+    });
+    ttsTimer = window.setTimeout(pollTts, 1200);
+  } catch (error) {
+    $("tts-phase").textContent = "启动失败";
+    $("tts-log").textContent = `${error.message}\n`;
+    start.disabled = false;
+  }
+}
+
+async function pollTts() {
+  let data = null;
+  try {
+    const response = await fetch(`/api/jobs/${state.jobId}/tts/status`);
+    data = await response.json().catch(() => ({ ok: false, error: `HTTP ${response.status}` }));
+    if (!response.ok || !data.ok) throw new Error(data.error || "查询进度失败");
+    if (data.phase === "running") {
+      $("tts-phase").textContent = `合成中 · 第 ${data.done}/${data.total} 段`;
+      if (data.log && data.log.length) {
+        const logBox = $("tts-log");
+        logBox.textContent = data.log.join("\n") + "\n";
+        logBox.scrollTop = logBox.scrollHeight;
+      }
+      ttsTimer = window.setTimeout(pollTts, 2000);
+      return;
+    }
+    if (data.phase === "done") {
+      $("tts-phase").textContent = "合成完成";
+      const download = $("tts-download");
+      download.href = `/api/jobs/${state.jobId}/download/mp3`;
+      download.hidden = false;
+      return;
+    }
+    if (data.phase === "error") {
+      $("tts-phase").textContent = "合成失败";
+      $("tts-log").textContent += `${data.error}\n`;
+    }
+  } catch (error) {
+    $("tts-phase").textContent = "查询失败";
+    $("tts-log").textContent += `${error.message}\n`;
+  } finally {
+    if (!data || data.phase !== "running") $("tts-start").disabled = false;
+  }
+}
