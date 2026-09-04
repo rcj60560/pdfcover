@@ -1,0 +1,12 @@
+name = "B站双语字幕"
+desc = "粘贴 B 站视频链接 → 提取字幕轨 → 中英时间轴对齐 → 阅读预览 / Markdown / Excel"
+category = "英语"
+status = "ready"
+
+[run]
+cmd = ["python", "app.py"]
+port = 8600
+url = "http://127.0.0.1:8600"
+
+[links]
+live = ""

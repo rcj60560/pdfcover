@@ -57,7 +57,7 @@
 async function launch(slug, url){
   const b = event.target; b.disabled = true; b.textContent = '启动中…';
   try { await fetch('/launch/'+slug,{method:'POST'}); } finally { b.disabled = false; b.textContent = '启动'; }
-  window.open(url, '_blank');
+  if (url) window.open(url, '_blank');   // 无网页的批处理工具(url="")不开空白页签
   refresh(slug);
 }
 async function stop(slug){ await fetch('/stop/'+slug,{method:'POST'}); refresh(slug); }

@@ -1,0 +1,79 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Word→Markdown</title>
+  <style>
+    body { font-family: -apple-system, "PingFang SC", "Microsoft YaHei", sans-serif;
+           background: #f5f5f7; margin: 0; padding: 24px; color: #1d1d1f; }
+    .wrap { max-width: 900px; margin: 0 auto; }
+    h1 { font-size: 22px; margin: 0 0 4px; }
+    .sub { color: #86868b; margin: 0 0 20px; font-size: 14px; }
+    .card { background: #fff; border: 1px solid #eee; border-radius: 14px; padding: 16px; }
+    input[type=file] { margin: 0 12px 0 0; }
+    button { border: 1px solid #d2d2d7; background: #fff; border-radius: 10px;
+             padding: 8px 14px; font-size: 14px; cursor: pointer; }
+    button.primary { background: #3b82f6; color: #fff; border-color: #3b82f6; }
+    button:disabled { opacity: .5; cursor: default; }
+    .error { color: #c62828; font-size: 14px; margin-top: 10px; white-space: pre-wrap; }
+    .meta { font-size: 13px; color: #555; margin: 14px 0 8px; display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+    .meta code { background: #f0f0f0; border-radius: 6px; padding: 2px 6px; }
+    pre { background: #fafafa; border: 1px solid #eee; border-radius: 10px;
+          padding: 12px; font-size: 13px; max-height: 60vh; overflow: auto; white-space: pre-wrap; word-break: break-all; }
+    img { max-width: 100%; }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <h1>📄 Word→Markdown</h1>
+    <p class="sub">上传 .docx，pandoc 转成 GitHub 风格 Markdown；图片自动抽到 图片和附件/，复杂表格降级 HTML 不丢数据</p>
+
+    <div class="card">
+      <input type="file" id="file" accept=".docx" />
+      <button class="primary" id="go" onclick="convert()">转换</button>
+      <div class="error" id="err" hidden></div>
+    </div>
+
+    <div id="result" hidden>
+      <div class="meta">
+        <span>图片 <b id="nimg">0</b> 张</span>
+        <span>产物目录：<code id="outdir"></code></span>
+        <button onclick="reveal()">打开产物目录</button>
+        <a id="zip" href="#" download>下载 zip（md + 图片）</a>
+      </div>
+      <pre id="md"></pre>
+    </div>
+  </div>
+<script>
+let curDir = '';
+async function convert(){
+  const f = document.getElementById('file').files[0];
+  const err = document.getElementById('err'), btn = document.getElementById('go');
+  err.hidden = true;
+  if(!f){ err.textContent = '请先选择 .docx 文件'; err.hidden = false; return; }
+  btn.disabled = true; btn.textContent = '转换中…';
+  try{
+    const fd = new FormData(); fd.append('file', f);
+    const r = await fetch('/api/convert', {method:'POST', body: fd});
+    const j = await r.json();
+    if(!j.ok){ err.textContent = j.error || '转换失败'; err.hidden = false; return; }
+    curDir = j.out_dir;
+    document.getElementById('nimg').textContent = j.images.length;
+    document.getElementById('outdir').textContent = j.out_dir;
+    document.getElementById('md').textContent = j.md_text;
+    document.getElementById('zip').href = j.zip_url;
+    document.getElementById('result').hidden = false;
+  }catch(e){
+    err.textContent = '请求失败：' + e; err.hidden = false;
+  }finally{
+    btn.disabled = false; btn.textContent = '转换';
+  }
+}
+async function reveal(){
+  if(!curDir) return;
+  await fetch('/api/reveal', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({path: curDir})});
+}
+</script>
+</body>
+</html>
