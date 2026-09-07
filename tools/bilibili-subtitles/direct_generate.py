@@ -156,20 +156,36 @@ def split_methods(methods: Sequence[str]) -> tuple[str, str]:
     return english, chinese
 
 
+_RATE_LIMIT_MARKERS = ("too many requests", "429", "rate limit", "throttl")
+
+
+def _is_rate_limit_error(exc: Exception) -> bool:
+    text = str(exc).lower()
+    return any(marker in text for marker in _RATE_LIMIT_MARKERS)
+
+
 def _translate_with_retries(
     fn: Callable[[str], str],
     text: str,
     retries: int,
     retry_sleep: float,
+    log: Callable[[str], None] | None = None,
 ) -> str:
+    say = log or (lambda message: None)
     last_error: Exception | None = None
     for attempt in range(retries):
         try:
             return fn(text)
-        except Exception as exc:  # 网络限流时线性退避
+        except Exception as exc:
             last_error = exc
-            if attempt + 1 < retries and retry_sleep:
-                time.sleep(retry_sleep * (attempt + 1))
+            if attempt + 1 < retries:
+                if _is_rate_limit_error(exc):
+                    # 限流按秒级恢复：短退避只会连撞，等 10s/20s 再试
+                    wait = max(10.0 * (attempt + 1), retry_sleep * (attempt + 1))
+                    say(f"      翻译触发限流，等待 {wait:.0f}s 后重试…")
+                else:
+                    wait = retry_sleep * (attempt + 1)
+                time.sleep(wait)
     raise RuntimeError(f"机器翻译失败：{last_error}") from last_error
 
 
@@ -233,6 +249,7 @@ def translate_texts(
     backends: Sequence[Backend] | None = None,
     retries: int = 3,
     retry_sleep: float = 1.5,
+    request_interval: float = 0.3,
     log: Callable[[str], None] | None = None,
 ) -> tuple[list[str], str]:
     """多后端翻译：当前后端重试耗尽即永久切换下一个，返回 (译文, 实际后端名)。"""
@@ -244,15 +261,20 @@ def translate_texts(
     used: list[str] = []
     total = len(texts)
     last_error: Exception | None = None
+    paced = False  # 仅第一个请求前不等待
     for text in texts:
         translated: str | None = None
         while active:
             label, fn, limit = active[0]
             try:
-                parts = [
-                    _translate_with_retries(fn, chunk, retries, retry_sleep)
-                    for chunk in split_for_limit(text, limit)
-                ]
+                parts = []
+                for chunk in split_for_limit(text, limit):
+                    if paced:
+                        # MyMemory 免费档限 5 请求/秒：逐条节流，稳在限制之下
+                        time.sleep(request_interval)
+                    paced = True
+                    parts.append(_translate_with_retries(
+                        fn, chunk, retries, retry_sleep, log=say))
             except Exception as exc:
                 last_error = exc
                 say(f"      翻译后端 {label} 不可用（{exc}），切换下一个")

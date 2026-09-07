@@ -297,6 +297,77 @@ def test_translation_failure_hint_maps_causes_to_actions():
     assert "重试翻译" in generic and "HTTPS_PROXY" in generic
 
 
+def test_translate_texts_paces_requests_under_rate_limit(monkeypatch):
+    """逐条请求间加 0.3s 节流，稳低于 MyMemory 的 5 请求/秒限制。"""
+    import direct_generate
+
+    sleeps: list[float] = []
+    monkeypatch.setattr(direct_generate.time, "sleep", lambda s: sleeps.append(s))
+
+    values, _ = direct_generate.translate_texts(
+        ["a", "b", "c"], "en", "zh-CN",
+        backends=[("B", lambda text: "ok", 480)], retries=1)
+
+    assert values == ["ok"] * 3
+    assert sleeps.count(0.3) == 2  # 第一条前不等待，之后每条前节流
+
+
+def test_translate_texts_paces_between_chunks_of_long_text(monkeypatch):
+    import direct_generate
+
+    sleeps: list[float] = []
+    monkeypatch.setattr(direct_generate.time, "sleep", lambda s: sleeps.append(s))
+
+    direct_generate.translate_texts(
+        ["word " * 200], "en", "zh-CN",  # 超过 480 字符会分片
+        backends=[("B", lambda text: "ok", 480)], retries=1)
+
+    assert sleeps.count(0.3) >= 1  # 同一条字幕的分片之间也节流
+
+
+def test_translate_retries_wait_longer_on_rate_limit(monkeypatch):
+    """限流类错误用 10s/20s 长退避，而不是默认的 1.5s/3s。"""
+    import direct_generate
+
+    sleeps: list[float] = []
+    monkeypatch.setattr(direct_generate.time, "sleep", lambda s: sleeps.append(s))
+    attempts: list[str] = []
+
+    def flaky(text: str) -> str:
+        attempts.append(text)
+        if len(attempts) < 3:
+            raise RuntimeError("Server Error: You made too many requests to the server")
+        return "ok"
+
+    values, _ = direct_generate.translate_texts(
+        ["hi"], "en", "zh-CN", backends=[("B", flaky, 480)], retries=3)
+
+    assert values == ["ok"]
+    assert 10.0 in sleeps and 20.0 in sleeps
+    assert 1.5 not in sleeps and 3.0 not in sleeps
+
+
+def test_translate_retries_keep_short_backoff_for_other_errors(monkeypatch):
+    import direct_generate
+
+    sleeps: list[float] = []
+    monkeypatch.setattr(direct_generate.time, "sleep", lambda s: sleeps.append(s))
+    attempts: list[str] = []
+
+    def flaky(text: str) -> str:
+        attempts.append(text)
+        if len(attempts) < 3:
+            raise RuntimeError("connection reset")
+        return "ok"
+
+    values, _ = direct_generate.translate_texts(
+        ["hi"], "en", "zh-CN", backends=[("B", flaky, 480)], retries=3)
+
+    assert values == ["ok"]
+    assert 1.5 in sleeps and 3.0 in sleeps
+    assert all(seconds < 10 for seconds in sleeps)
+
+
 def test_translate_texts_falls_back_when_first_backend_unreachable():
     def broken(_text):
         raise RuntimeError("no network")
