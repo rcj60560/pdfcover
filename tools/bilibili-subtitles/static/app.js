@@ -232,6 +232,23 @@ async function startRetranslate() {
   }
 }
 
+async function stopServer() {
+  const confirmed = window.confirm(
+    "确定停止服务？进行中的识别 / 翻译 / 合成会立即中断，内存里的结果将丢弃。");
+  if (!confirmed) return;
+  const button = $("stop-server");
+  button.disabled = true;
+  button.textContent = "停止中…";
+  try {
+    await api("/api/shutdown", {});
+  } catch { /* 进程退出导致连接断开属预期 */ }
+  if (transcribeTimer) { window.clearTimeout(transcribeTimer); transcribeTimer = null; }
+  if (ttsTimer) { window.clearTimeout(ttsTimer); ttsTimer = null; }
+  button.textContent = "已停止";
+  setStatus("服务已停止，可以关闭本页。", "success");
+  window.close();
+}
+
 async function pollTranscribe() {
   let data = null;
   try {
@@ -340,6 +357,7 @@ $("inspect-form").addEventListener("submit", inspect);
 $("generate-button").addEventListener("click", generate);
 $("transcribe-button").addEventListener("click", startTranscribe);
 $("retranslate-button").addEventListener("click", startRetranslate);
+$("stop-server").addEventListener("click", stopServer);
 $("subtitle-search").addEventListener("input", filterRows);
 $("font-smaller").addEventListener("click", () => changeFont(-.1));
 $("font-larger").addEventListener("click", () => changeFont(.1));

@@ -915,6 +915,19 @@ def test_retranslate_rejects_invalid_states():
     assert client.post(f"/api/jobs/{busy_id}/retranslate", json={}).status_code == 409
 
 
+def test_shutdown_endpoint_exits_server(monkeypatch):
+    """停止服务接口：确认收到请求即返回 ok，并触发进程退出（测试中替换为记录）。"""
+    web = _load_web()
+    calls = []
+    monkeypatch.setattr(web, "_shutdown_server", lambda: calls.append(True))
+
+    client = web.app.test_client()
+    response = client.post("/api/shutdown", json={})
+
+    assert response.status_code == 200 and response.get_json()["ok"] is True
+    assert calls == [True]
+
+
 def test_inspect_returns_transcribable_video_without_tracks(monkeypatch):
     web = _load_web()
     monkeypatch.setattr(web, "extract_video", lambda url, browser: _no_track_video("纯英文口播"))

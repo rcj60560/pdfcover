@@ -27,7 +27,14 @@ body {
 }
 .ambient-one { width: 520px; height: 520px; right: -180px; top: -220px; background: #d9cffc; }
 .ambient-two { width: 420px; height: 420px; left: -170px; top: 440px; background: #c5efdf; }
-.shell { width: min(1080px, calc(100% - 32px)); margin: 0 auto; padding: 72px 0 42px; }
+.shell { width: min(1080px, calc(100% - 32px)); margin: 0 auto; padding: 72px 0 42px; position: relative; }
+.stop-server {
+  position: absolute; top: 24px; right: 0; z-index: 1;
+  padding: 7px 16px; border-radius: 999px;
+  background: transparent; color: var(--muted);
+  font-size: 13px; letter-spacing: .04em;
+}
+.stop-server:hover { background: var(--soft); color: #b3261e; }
 .hero { max-width: 780px; margin-bottom: 36px; }
 .eyebrow { color: var(--violet); font-size: 12px; font-weight: 800; letter-spacing: .16em; }
 .hero h1 { margin: 12px 0 16px; font-size: clamp(42px, 7vw, 72px); line-height: 1.03; letter-spacing: -.055em; }

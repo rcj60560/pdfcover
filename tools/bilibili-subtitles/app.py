@@ -2,8 +2,10 @@
 from __future__ import annotations
 
 import sys
+import os
 import re
 import tempfile
+import time
 from collections import OrderedDict
 from dataclasses import dataclass, field
 from io import BytesIO
@@ -492,6 +494,23 @@ def download(job_id: str, kind: str):
             as_attachment=True, download_name=basename + "-朗读.mp3",
         )
     return "只支持 md / xlsx / srt / mp3", 404
+
+
+def _shutdown_server() -> None:
+    """延迟 0.5 秒退出整个进程：先让响应送达前端；后台线程均为 daemon，随之结束。"""
+    def _exit() -> None:
+        time.sleep(0.5)
+        sys.stdout.flush()
+        sys.stderr.flush()
+        os._exit(0)
+    Thread(target=_exit, daemon=True).start()
+
+
+@app.post("/api/shutdown")
+def shutdown():
+    """页面「停止服务」入口：本地单机工具，退出即彻底关闭（内存任务随之丢弃）。"""
+    _shutdown_server()
+    return jsonify(ok=True)
 
 
 if __name__ == "__main__":
