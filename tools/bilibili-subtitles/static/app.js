@@ -242,11 +242,40 @@ async function stopServer() {
   try {
     await api("/api/shutdown", {});
   } catch { /* 进程退出导致连接断开属预期 */ }
+  // 验证真的停了：探测到连不上才算数，避免"以为重启了其实没关"
+  const deadline = Date.now() + 5000;
+  let stopped = false;
+  while (Date.now() < deadline) {
+    await new Promise((resolve) => window.setTimeout(resolve, 500));
+    try {
+      await fetch("/api/health", { cache: "no-store" });
+    } catch {
+      stopped = true;
+      break;
+    }
+  }
   if (transcribeTimer) { window.clearTimeout(transcribeTimer); transcribeTimer = null; }
   if (ttsTimer) { window.clearTimeout(ttsTimer); ttsTimer = null; }
-  button.textContent = "已停止";
-  setStatus("服务已停止，可以关闭本页。", "success");
-  window.close();
+  if (stopped) {
+    button.textContent = "已停止";
+    $("server-started").textContent = "";
+    setStatus("服务已停止（已确认进程退出），可以关闭本页。", "success");
+    window.close();
+  } else {
+    button.disabled = false;
+    button.textContent = "停止服务";
+    setStatus("服务似乎仍在运行：请到启动它的终端按 Ctrl+C 结束进程。", "error");
+  }
+}
+
+async function loadServerStarted() {
+  try {
+    const response = await fetch("/api/health", { cache: "no-store" });
+    const data = await response.json();
+    if (data.ok && data.started_at) {
+      $("server-started").textContent = `服务启动于 ${data.started_at}`;
+    }
+  } catch { /* 健康检查失败不打扰页面 */ }
 }
 
 async function pollTranscribe() {
@@ -370,6 +399,7 @@ $("tts-button").addEventListener("click", async () => {
 });
 $("tts-start").addEventListener("click", startTts);
 restoreForm();
+loadServerStarted();
 
 async function loadTtsVoices() {
   const select = $("tts-voice");

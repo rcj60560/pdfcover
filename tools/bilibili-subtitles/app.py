@@ -6,6 +6,7 @@ import os
 import re
 import tempfile
 import time
+from datetime import datetime
 from collections import OrderedDict
 from dataclasses import dataclass, field
 from io import BytesIO
@@ -92,6 +93,8 @@ app = Flask(__name__)
 jobs = JobStore()
 _transcribe_start_lock = Lock()
 _tts_start_lock = Lock()
+# 进程启动时刻：页面显示"服务启动于 HH:MM:SS"，用于确认是否真的重启过
+_SERVER_STARTED_AT = datetime.now().strftime("%H:%M:%S")
 
 
 def _tts_deps_missing() -> str | None:
@@ -250,7 +253,7 @@ def index():
 
 @app.get("/api/health")
 def health():
-    return jsonify(ok=True)
+    return jsonify(ok=True, started_at=_SERVER_STARTED_AT)
 
 
 @app.post("/api/inspect")

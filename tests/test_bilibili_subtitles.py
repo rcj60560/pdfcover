@@ -999,6 +999,20 @@ def test_shutdown_endpoint_exits_server(monkeypatch):
     assert calls == [True]
 
 
+def test_health_reports_server_start_time():
+    """/api/health 带进程启动时间，页面用它显示"服务启动于 HH:MM:SS"验证重启。"""
+    web = _load_web()
+    client = web.app.test_client()
+
+    body = client.get("/api/health").get_json()
+
+    assert body["ok"] is True
+    started = body["started_at"]
+    assert isinstance(started, str) and len(started) == 8
+    hours, minutes, seconds = started.split(":")
+    assert 0 <= int(hours) <= 23 and 0 <= int(minutes) < 60 and 0 <= int(seconds) < 60
+
+
 def test_inspect_returns_transcribable_video_without_tracks(monkeypatch):
     web = _load_web()
     monkeypatch.setattr(web, "extract_video", lambda url, browser: _no_track_video("纯英文口播"))
