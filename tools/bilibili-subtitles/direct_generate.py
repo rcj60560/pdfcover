@@ -213,6 +213,18 @@ def _build_backends(source: str, target: str, probe: bool = True) -> list[Backen
     return chain
 
 
+def translation_failure_hint(exc: Exception) -> str:
+    """把翻译失败原因翻译成用户可执行的下一步操作（网页/命令行通用）。"""
+    text = str(exc)
+    if "额度" in text or "MYMEMORY WARNING" in text.upper():
+        return ("MyMemory 免费额度已用尽：设置环境变量 MYMEMORY_EMAIL=你的邮箱 可提额"
+                "（额度每天重置），恢复后重试翻译即可")
+    if "Google" in text:
+        return "Google 翻译失败：确认代理可用（HTTPS_PROXY 环境变量），或稍后重试翻译"
+    return ("翻译服务暂时不可用（多为限流或网络波动）：稍等片刻重试翻译；"
+            "如有代理可设置 HTTPS_PROXY 环境变量改走 Google")
+
+
 def translate_texts(
     texts: Sequence[str],
     source: str,
@@ -221,14 +233,17 @@ def translate_texts(
     backends: Sequence[Backend] | None = None,
     retries: int = 3,
     retry_sleep: float = 1.5,
+    log: Callable[[str], None] | None = None,
 ) -> tuple[list[str], str]:
     """多后端翻译：当前后端重试耗尽即永久切换下一个，返回 (译文, 实际后端名)。"""
+    say = log or (lambda message: print(message, flush=True))
     active = list(backends) if backends is not None else _build_backends(source, target)
     if not active:
         raise RuntimeError("没有可用的翻译后端")
     results: list[str] = []
     used: list[str] = []
     total = len(texts)
+    last_error: Exception | None = None
     for text in texts:
         translated: str | None = None
         while active:
@@ -238,8 +253,9 @@ def translate_texts(
                     _translate_with_retries(fn, chunk, retries, retry_sleep)
                     for chunk in split_for_limit(text, limit)
                 ]
-            except Exception:
-                print(f"      翻译后端 {label} 不可用，切换下一个", flush=True)
+            except Exception as exc:
+                last_error = exc
+                say(f"      翻译后端 {label} 不可用（{exc}），切换下一个")
                 active.pop(0)
                 continue
             translated = join_parts(parts)
@@ -247,7 +263,7 @@ def translate_texts(
                 used.append(label)
             break
         if translated is None:
-            raise RuntimeError("所有翻译后端均失败")
+            raise RuntimeError(f"所有翻译后端均失败：{last_error}")
         results.append(translated)
         if progress:
             progress(len(results), total)
@@ -268,7 +284,7 @@ def fill_missing_languages(
         values, backend_label = translate_texts(
             [result[index].english for index in missing_zh], "en", "zh-CN",
             lambda done, total: say(f"      翻译进度 {done}/{total}"),
-            backends=backends,
+            backends=backends, log=say,
         )
         result = apply_translations(result, missing_zh, values, "chinese")
         methods.append(f"中文：{backend_label} 机器翻译")
@@ -279,7 +295,7 @@ def fill_missing_languages(
         values, backend_label = translate_texts(
             [result[index].chinese for index in missing_en], "zh-CN", "en",
             lambda done, total: say(f"      翻译进度 {done}/{total}"),
-            backends=backends,
+            backends=backends, log=say,
         )
         result = apply_translations(result, missing_en, values, "english")
         methods.append(f"English：{backend_label} 机器翻译")
@@ -307,7 +323,9 @@ def download_audio(url: str, temp_dir: Path, browser: str) -> tuple[Path, dict]:
 
     options = {
         **_yt_dlp_options(browser),
-        "format": "bestaudio[acodec!=none]/bestaudio/best",
+        # 转写只需要音频：优先最低码率纯音频（B 站通常为 64k m4a，Whisper 内部会重采样，
+        # 高码率毫无收益）；万一被迫落到含画面的合成流，也选 worst，避免拉高清视频。
+        "format": "worstaudio[acodec!=none]/worstaudio/bestaudio[acodec!=none]/worst[acodec!=none]/best",
         "outtmpl": str(temp_dir / "source.%(ext)s"),
         "quiet": False,
         "no_warnings": False,
@@ -434,8 +452,15 @@ def generate(
         methods.extend(audio.methods)
 
     if translate:
-        rows, translation_methods = fill_missing_languages(rows)
-        methods.extend(translation_methods)
+        try:
+            rows, translation_methods = fill_missing_languages(rows)
+            methods.extend(translation_methods)
+        except Exception as exc:
+            # 转写（耗时大头）已完成：翻译失败只降级为缺中文，仍写出结果文件。
+            print("警告：机器翻译失败，已保留现有内容继续导出", flush=True)
+            print(f"  原因：{exc}", flush=True)
+            print(f"  处理：{translation_failure_hint(exc)}", flush=True)
+            methods.append("中文：机器翻译失败（内容已保留）")
     print("[5/5] 写入 Markdown / Excel", flush=True)
     output_dir.mkdir(parents=True, exist_ok=True)
     basename = core.sanitize_filename(title) + "-双语字幕"

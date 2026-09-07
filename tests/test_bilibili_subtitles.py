@@ -142,6 +142,42 @@ def test_transcribe_audio_accepts_custom_prompt(monkeypatch, tmp_path):
     assert calls["kwargs"]["initial_prompt"] == "A physics lecture."
 
 
+def test_download_audio_prefers_lowest_bitrate_stream(monkeypatch, tmp_path):
+    """转写只要音频：应选最低码率纯音频，兜底也不允许落到高清合成流。"""
+    import types
+
+    import direct_generate
+
+    captured = {}
+
+    class FakeYoutubeDL:
+        def __init__(self, options):
+            captured.update(options)
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *exc):
+            return False
+
+        def extract_info(self, url, download=True):
+            return {"title": "t"}
+
+    fake = types.ModuleType("yt_dlp")
+    fake.YoutubeDL = FakeYoutubeDL
+    monkeypatch.setitem(sys.modules, "yt_dlp", fake)
+    (tmp_path / "source.m4a").write_bytes(b"audio-bytes")
+
+    audio_path, info = direct_generate.download_audio(
+        "https://www.bilibili.com/video/BV1pgtn6NENb", tmp_path, "none")
+
+    assert audio_path == tmp_path / "source.m4a" and info == {"title": "t"}
+    segments = captured["format"].split("/")
+    assert segments[0].startswith("worstaudio")  # 最低码率纯音频优先
+    assert "bestaudio[acodec!=none]" in segments  # 无低码率时退而求其次
+    assert all(segment != "best" for segment in segments[:-1])  # 中途不许直接选高清合成流
+
+
 def test_generate_rows_from_audio_downloads_transcribes_and_returns_rows(monkeypatch, tmp_path):
     import direct_generate
 
@@ -218,6 +254,47 @@ def test_split_for_limit_hard_splits_unsplittable_text():
 def test_join_parts_is_cjk_aware():
     assert join_parts(["Hello.", "World."]) == "Hello. World."
     assert join_parts(["你好。", "世界。"]) == "你好。世界。"
+
+
+def test_translate_texts_reports_backend_failure_reason_via_log():
+    """切换后端时要把真实异常原因送进日志回调，而不是只说"不可用"。"""
+    import direct_generate
+
+    lines: list[str] = []
+
+    def broken(text: str) -> str:
+        raise RuntimeError("HTTP 429 限流（测试）")
+
+    backends = [("Fake", broken, 480), ("Backup", lambda text: "ok", 480)]
+    values, label = direct_generate.translate_texts(
+        ["hi"], "en", "zh-CN", backends=backends, retries=1, log=lines.append)
+
+    assert values == ["ok"] and "Backup" in label
+    assert any("Fake" in line and "429" in line for line in lines)
+
+
+def test_translate_texts_failure_includes_last_backend_error():
+    """全部后端失败时，最终报错要带上最后一个后端的真实原因。"""
+    import direct_generate
+
+    def broken(text: str) -> str:
+        raise RuntimeError("MyMemory 额度告警：YOU USED ALL AVAILABLE FREE TRANSLATIONS")
+
+    with pytest.raises(RuntimeError) as excinfo:
+        direct_generate.translate_texts(["hi"], "en", "zh-CN",
+                                         backends=[("Only", broken, 480)], retries=1)
+    assert "额度告警" in str(excinfo.value)
+
+
+def test_translation_failure_hint_maps_causes_to_actions():
+    import direct_generate
+
+    quota = direct_generate.translation_failure_hint(
+        RuntimeError("MyMemory 额度告警：YOU USED ALL"))
+    assert "MYMEMORY_EMAIL" in quota
+
+    generic = direct_generate.translation_failure_hint(RuntimeError("连接超时"))
+    assert "重试翻译" in generic and "HTTPS_PROXY" in generic
 
 
 def test_translate_texts_falls_back_when_first_backend_unreachable():
@@ -663,6 +740,64 @@ def test_transcribe_job_reports_pipeline_error(monkeypatch):
     assert "下载音频失败（测试）" in body["error"]
 
 
+def test_transcribe_keeps_rows_when_translation_fails(monkeypatch):
+    """翻译失败不应拖垮整个任务：保留英文转写结果，日志给出可操作提示。"""
+    from direct_generate import AudioPipelineResult
+
+    web = _load_web()
+    job_id = web.jobs.put(web.Job(video=_no_track_video()))
+    monkeypatch.setattr(web, "_whisper_deps_missing", lambda: None)
+    monkeypatch.setattr(web, "TRANSCRIBE_PIPELINE", lambda url, browser, model_name, log=None: AudioPipelineResult(
+        "t", "https://www.bilibili.com/video/BV1pgtn6NENb",
+        [core.BilingualRow(0, 2, "Hello there.", "")],
+        ["English：faster-whisper small.en 机器识别"],
+    ))
+
+    def broken_translation(rows, log=None):
+        raise RuntimeError("所有翻译后端均失败：MyMemory 额度告警：YOU USED ALL")
+
+    monkeypatch.setattr(web, "TRANSLATE_ROWS", broken_translation)
+
+    client = web.app.test_client()
+    assert client.post(f"/api/jobs/{job_id}/transcribe", json={}).status_code == 200
+    web.jobs.get(job_id).transcribe_thread.join(timeout=5)
+
+    body = client.get(f"/api/jobs/{job_id}/transcribe/status").get_json()
+    assert body["phase"] == "done" and body["error"] == ""
+    assert body["has_english"] is True and body["has_chinese"] is False
+    assert any("翻译失败" in line for line in body["log"])
+    assert any("MYMEMORY_EMAIL" in line for line in body["log"])
+    assert "翻译失败" in web.jobs.get(job_id).chinese_label
+
+    srt = client.get(f"/api/jobs/{job_id}/download/srt")
+    assert srt.status_code == 200 and "Hello there." in srt.get_data(as_text=True)
+
+
+def test_generate_cli_keeps_outputs_when_translation_fails(monkeypatch, tmp_path):
+    import direct_generate
+
+    monkeypatch.setattr(direct_generate, "rows_from_native_tracks", lambda url, browser: None)
+    fake_audio = tmp_path / "a.m4a"
+    fake_audio.write_bytes(b"audio-bytes")
+    monkeypatch.setattr(direct_generate, "download_audio", lambda url, temp_dir, browser: (
+        fake_audio, {"title": "CLI 标题", "webpage_url": "https://www.bilibili.com/video/BV1pgtn6NENb"},
+    ))
+    monkeypatch.setattr(direct_generate, "transcribe_audio",
+                        lambda audio_path, model_name, **kwargs: [cue(0, 2, "Hello there.")])
+
+    def broken(rows, backends=None, log=None):
+        raise RuntimeError("所有翻译后端均失败：MyMemory 额度告警：YOU USED ALL")
+
+    monkeypatch.setattr(direct_generate, "fill_missing_languages", broken)
+
+    md_path, xlsx_path = direct_generate.generate("BV1pgtn6NENb", tmp_path)
+
+    assert md_path.exists() and xlsx_path.exists()
+    content = md_path.read_text(encoding="utf-8")
+    assert "Hello there." in content
+    assert "翻译失败" in content  # 生成说明里标注中文缺失原因
+
+
 def test_transcribe_rejects_duplicate_start(monkeypatch):
     from direct_generate import AudioPipelineResult
 
@@ -705,6 +840,79 @@ def test_transcribe_unknown_job_returns_404():
     client = web.app.test_client()
     assert client.post("/api/jobs/nope/transcribe", json={}).status_code == 404
     assert client.get("/api/jobs/nope/transcribe/status").status_code == 404
+
+
+def test_retranslate_fills_missing_chinese_after_failure(monkeypatch):
+    """翻译失败的任务：重试翻译成功后补齐中文，无需重跑 Whisper。"""
+    web = _load_web()
+    job = web.Job(video=_no_track_video())
+    job.rows = [core.BilingualRow(0, 2, "Hello there.", "")]
+    job.english_label = "语音识别"
+    job.chinese_label = "翻译失败（已保留英文转写）"
+    job.transcribe.phase = "done"
+    job_id = web.jobs.put(job)
+
+    monkeypatch.setattr(web, "TRANSLATE_ROWS", lambda rows, log=None: (
+        [core.BilingualRow(0, 2, "Hello there.", "你好。")], ["中文：Fake 机器翻译"],
+    ))
+
+    client = web.app.test_client()
+    assert client.post(f"/api/jobs/{job_id}/retranslate", json={}).status_code == 200
+    web.jobs.get(job_id).transcribe_thread.join(timeout=5)
+
+    body = client.get(f"/api/jobs/{job_id}/transcribe/status").get_json()
+    assert body["phase"] == "done" and body["has_chinese"] is True
+    assert "Fake" in web.jobs.get(job_id).chinese_label
+
+    srt = client.get(f"/api/jobs/{job_id}/download/srt")
+    assert "你好。" in srt.get_data(as_text=True)
+
+
+def test_retranslate_failure_keeps_job_usable(monkeypatch):
+    """重试翻译再失败：任务保持可下载，日志给出原因和建议。"""
+    web = _load_web()
+    job = web.Job(video=_no_track_video())
+    job.rows = [core.BilingualRow(0, 2, "Hello there.", "")]
+    job.chinese_label = "翻译失败（已保留英文转写）"
+    job.transcribe.phase = "done"
+    job_id = web.jobs.put(job)
+
+    def broken(rows, log=None):
+        raise RuntimeError("所有翻译后端均失败：MyMemory 额度告警（测试）")
+
+    monkeypatch.setattr(web, "TRANSLATE_ROWS", broken)
+
+    client = web.app.test_client()
+    assert client.post(f"/api/jobs/{job_id}/retranslate", json={}).status_code == 200
+    web.jobs.get(job_id).transcribe_thread.join(timeout=5)
+
+    body = client.get(f"/api/jobs/{job_id}/transcribe/status").get_json()
+    assert body["phase"] == "done" and body["has_chinese"] is False
+    assert any("重试翻译失败" in line for line in body["log"])
+    assert any("MYMEMORY_EMAIL" in line for line in body["log"])
+
+
+def test_retranslate_rejects_invalid_states():
+    web = _load_web()
+    client = web.app.test_client()
+    assert client.post("/api/jobs/nope/retranslate", json={}).status_code == 404
+
+    empty_id = web.jobs.put(web.Job(video=_no_track_video()))
+    response = client.post(f"/api/jobs/{empty_id}/retranslate", json={})
+    assert response.status_code == 400 and "请先完成语音识别" in response.get_json()["error"]
+
+    full = web.Job(video=_no_track_video())
+    full.rows = [core.BilingualRow(0, 2, "Hi", "你好")]
+    full.transcribe.phase = "done"
+    full_id = web.jobs.put(full)
+    response = client.post(f"/api/jobs/{full_id}/retranslate", json={})
+    assert response.status_code == 400 and "没有需要补翻" in response.get_json()["error"]
+
+    busy = web.Job(video=_no_track_video())
+    busy.rows = [core.BilingualRow(0, 2, "Hi", "")]
+    busy.transcribe.phase = "running"
+    busy_id = web.jobs.put(busy)
+    assert client.post(f"/api/jobs/{busy_id}/retranslate", json={}).status_code == 409
 
 
 def test_inspect_returns_transcribable_video_without_tracks(monkeypatch):

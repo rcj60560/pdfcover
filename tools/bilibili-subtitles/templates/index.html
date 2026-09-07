@@ -64,6 +64,7 @@
           用 Whisper 识别英文语音，再机器翻译成中文，生成带时间轴的英中双语字幕。约需几分钟，请保持页面打开。
         </p>
         <button class="primary generate" id="transcribe-button" type="button">识别英文语音并生成双语字幕</button>
+        <button class="primary" id="retranslate-button" type="button" hidden>重试翻译（补齐中文）</button>
         <div id="transcribe-progress" class="transcribe-progress" hidden>
           <ol class="step-track" id="transcribe-steps">
             <li class="step" data-step="1">下载音频</li>

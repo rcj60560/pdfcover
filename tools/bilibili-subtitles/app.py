@@ -164,16 +164,64 @@ def _run_transcribe(job: Job, url: str, browser: str, model_name: str) -> None:
 
     try:
         result = TRANSCRIBE_PIPELINE(url, browser, model_name, log=say)
-        rows, methods = TRANSLATE_ROWS(result.rows, log=say)
-        english_text, chinese_text = direct_generate.split_methods(result.methods + methods)
-        job.rows = rows
-        job.english_label = english_text or "语音识别"
-        job.chinese_label = chinese_text or "机器翻译"
-        state.error = ""
-        state.phase = "done"
     except Exception as exc:  # 后台线程兜底：失败原因进状态，供页面展示
         state.error = str(exc) or exc.__class__.__name__
         state.phase = "error"
+        return
+
+    # 转写（耗时大头）已成功——翻译失败只降级为"缺中文"，不丢弃结果。
+    try:
+        rows, methods = TRANSLATE_ROWS(result.rows, log=say)
+        chinese_missing = False
+    except Exception as exc:
+        rows, methods = result.rows, []
+        chinese_missing = True
+        say(f"      中文翻译失败：{exc}")
+        say(f"      处理建议：{direct_generate.translation_failure_hint(exc)}")
+        say("      已保留英文转写结果；额度恢复或配置代理后可点『重试翻译』补翻中文")
+
+    english_text, chinese_text = direct_generate.split_methods(result.methods + methods)
+    job.rows = rows
+    job.english_label = english_text or "语音识别"
+    job.chinese_label = ("翻译失败（已保留英文转写）" if chinese_missing
+                         else chinese_text or "机器翻译")
+    state.error = ""
+    state.phase = "done"
+
+
+def _rows_missing_translation(rows: list[core.BilingualRow]) -> bool:
+    return any(
+        (row.english and not row.chinese) or (row.chinese and not row.english)
+        for row in rows
+    )
+
+
+def _run_retranslate(job: Job) -> None:
+    """对已转写结果补跑机器翻译；失败时保留现有内容，任务仍可下载。"""
+    state = job.transcribe
+
+    def say(message: str) -> None:
+        state.log.append(str(message))
+        if len(state.log) > 400:
+            del state.log[:200]
+
+    say("[4/5] 重试机器翻译：补齐缺失语言")
+    try:
+        rows, methods = TRANSLATE_ROWS(job.rows or [], log=say)
+    except Exception as exc:
+        say(f"      重试翻译失败：{exc}")
+        say(f"      处理建议：{direct_generate.translation_failure_hint(exc)}")
+        state.error = ""  # 已有结果仍可下载，不算任务失败
+        state.phase = "done"
+        return
+    english_text, chinese_text = direct_generate.split_methods(methods)
+    job.rows = rows
+    if english_text:
+        job.english_label = english_text
+    if chinese_text:
+        job.chinese_label = chinese_text
+    state.error = ""
+    state.phase = "done"
 
 
 def _video_public(video: ExtractedVideo) -> dict:
@@ -288,6 +336,29 @@ def start_transcribe(job_id: str):
             args=(job, job.video.source_url, browser, model_name),
             daemon=True,
         )
+        job.transcribe_thread = thread
+        thread.start()
+    return jsonify(ok=True)
+
+
+@app.post("/api/jobs/<job_id>/retranslate")
+def start_retranslate(job_id: str):
+    try:
+        job = _job_or_error(job_id)
+    except LookupError as exc:
+        return jsonify(ok=False, error=str(exc)), 404
+    rows = job.rows or []
+    if not rows:
+        return jsonify(ok=False, error="请先完成语音识别，再重试翻译"), 400
+    if not _rows_missing_translation(rows):
+        return jsonify(ok=False, error="当前内容没有需要补翻的部分"), 400
+    with _transcribe_start_lock:
+        if job.transcribe.phase == "running":
+            return jsonify(ok=False, error="任务正在进行中，请等待完成"), 409
+        job.transcribe.phase = "running"
+        job.transcribe.error = ""
+        job.transcribe.log = []
+        thread = Thread(target=_run_retranslate, args=(job,), daemon=True)
         job.transcribe_thread = thread
         thread.start()
     return jsonify(ok=True)

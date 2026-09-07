@@ -8,6 +8,7 @@ const state = {
 
 let transcribeTimer = null;
 let ttsTimer = null;
+let retranscribing = false;
 
 function setStatus(message, type = "loading") {
   const box = $("status");
@@ -54,8 +55,11 @@ function fillTrackSelect(select, tracks, family, suggested) {
 
 function resetTranscribePanel() {
   if (transcribeTimer) { window.clearTimeout(transcribeTimer); transcribeTimer = null; }
+  retranscribing = false;
   const button = $("transcribe-button");
   button.disabled = false;
+  $("retranslate-button").hidden = true;
+  $("retranslate-button").disabled = false;
   $("transcribe-progress").hidden = true;
   $("transcribe-phase").textContent = "准备中…";
   $("transcribe-log").textContent = "";
@@ -211,13 +215,32 @@ async function startTranscribe() {
   }
 }
 
+async function startRetranslate() {
+  const button = $("retranslate-button");
+  button.disabled = true;
+  retranscribing = true;
+  $("transcribe-progress").hidden = false;
+  $("transcribe-phase").textContent = "重试翻译中…";
+  $("transcribe-log").textContent = "正在启动重试翻译（无需重跑语音识别）…\n";
+  try {
+    await api(`/api/jobs/${state.jobId}/retranslate`, {});
+    transcribeTimer = window.setTimeout(pollTranscribe, 1000);
+  } catch (error) {
+    $("transcribe-phase").textContent = "重试翻译启动失败";
+    $("transcribe-log").textContent += `${error.message}\n`;
+    button.disabled = false;
+  }
+}
+
 async function pollTranscribe() {
   let data = null;
   try {
     const response = await fetch(`/api/jobs/${state.jobId}/transcribe/status`);
     data = await response.json().catch(() => ({ ok: false, error: `HTTP ${response.status}` }));
     if (!response.ok || !data.ok) throw new Error(data.error || "查询进度失败");
-    $("transcribe-phase").textContent = TRANSCRIBE_PHASE_TEXT[data.phase] || data.phase;
+    $("transcribe-phase").textContent = (retranscribing && data.phase === "running")
+      ? "重试翻译中…"
+      : TRANSCRIBE_PHASE_TEXT[data.phase] || data.phase;
     renderStepTrack(data.stage);
     if (data.log && data.log.length) {
       const logBox = $("transcribe-log");
@@ -229,7 +252,14 @@ async function pollTranscribe() {
       return;
     }
     if (data.phase === "done") {
-      setStatus("语音识别完成，双语字幕已生成。", "success");
+      const translationMissing = data.has_english && !data.has_chinese;
+      retranscribing = false;
+      $("retranslate-button").hidden = !translationMissing;
+      if (translationMissing) {
+        setStatus("语音识别完成，但中文翻译失败——英文结果已生成，可稍后点『重试翻译』补齐中文。", "error");
+      } else {
+        setStatus("语音识别完成，双语字幕已生成。", "success");
+      }
       renderRows({
         rows: data.rows,
         count: data.count,
@@ -238,6 +268,7 @@ async function pollTranscribe() {
       return;
     }
     if (data.phase === "error") {
+      retranscribing = false;
       setStatus(`识别失败：${data.error}`, "error");
       $("transcribe-log").textContent += `${data.error}\n`;
     }
@@ -245,7 +276,10 @@ async function pollTranscribe() {
     setStatus(error.message, "error");
     $("transcribe-log").textContent += `${error.message}\n`;
   } finally {
-    if (!data || data.phase !== "running") $("transcribe-button").disabled = false;
+    if (!data || data.phase !== "running") {
+      $("transcribe-button").disabled = false;
+      $("retranslate-button").disabled = false;
+    }
   }
 }
 
@@ -305,6 +339,7 @@ function restoreForm() {
 $("inspect-form").addEventListener("submit", inspect);
 $("generate-button").addEventListener("click", generate);
 $("transcribe-button").addEventListener("click", startTranscribe);
+$("retranslate-button").addEventListener("click", startRetranslate);
 $("subtitle-search").addEventListener("input", filterRows);
 $("font-smaller").addEventListener("click", () => changeFont(-.1));
 $("font-larger").addEventListener("click", () => changeFont(.1));

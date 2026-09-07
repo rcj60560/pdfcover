@@ -40,8 +40,10 @@ python tools/bilibili-subtitles/direct_generate.py "https://www.bilibili.com/vid
 
 机器翻译是自动切换的后端链：先 3 秒探测 Google Translate（可达则优先用，质量更好）；
 不可达时直接使用 MyMemory（免 key）。MyMemory 单条限 500 字符会自动按句分片；
-匿名额度有限，设置环境变量 `MYMEMORY_EMAIL` 可提额。有代理时设 `HTTPS_PROXY`
-即可走回 Google 路径。
+匿名额度有限（请求过快或当日额度用尽会失败），设置环境变量 `MYMEMORY_EMAIL`
+可提额。有代理时设 `HTTPS_PROXY` 即可走回 Google 路径。翻译失败不会丢掉已完成的
+转写结果：网页会保留英文字幕并提供「重试翻译」按钮（额度每天重置，恢复后一键补翻，
+无需重跑语音识别），命令行则保留现有内容照常导出文件；失败原因和处理建议会写进日志。
 
 ## 能处理什么
 
@@ -54,7 +56,7 @@ python tools/bilibili-subtitles/direct_generate.py "https://www.bilibili.com/vid
 
 ## 当前边界
 
-- 网页模式不下载视频；语音识别只临时下载音频，识别完自动删除，不落盘。
+- 网页模式不下载视频；语音识别只临时下载音频（自动选最低码率音轨，Whisper 内部会重采样，高码率无收益），识别完自动删除，不落盘。
 - 语音识别依赖是可选的：未装 `requirements-whisper.txt` 时网页会提示安装命令，其余功能不受影响。
 - 语音识别任务在内存中运行，刷新页面会丢进度，需要重新识别；识别 + 翻译全程约几分钟（20 分钟视频约 8 分钟），请保持页面打开。
 - 中文语音视频暂不支持自动转写（Whisper 模型用 `small.en`，仅英文）。
