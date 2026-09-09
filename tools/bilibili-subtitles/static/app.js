@@ -234,7 +234,7 @@ async function startRetranslate() {
 
 async function stopServer() {
   const confirmed = window.confirm(
-    "确定停止服务？进行中的识别 / 翻译 / 合成会立即中断，内存里的结果将丢弃。");
+    "确定停止服务？进行中的任务会中断。已完成的转写和成功译文会保留在本地缓存；未下载的 MP3 会丢失。");
   if (!confirmed) return;
   const button = $("stop-server");
   button.disabled = true;
@@ -273,7 +273,8 @@ async function loadServerStarted() {
     const response = await fetch("/api/health", { cache: "no-store" });
     const data = await response.json();
     if (data.ok && data.started_at) {
-      $("server-started").textContent = `服务启动于 ${data.started_at}`;
+      const emailStatus = data.translation_email_configured ? "MyMemory 邮箱已配置" : "MyMemory 未配置邮箱";
+      $("server-started").textContent = `服务启动于 ${data.started_at} · ${emailStatus}`;
     }
   } catch { /* 健康检查失败不打扰页面 */ }
 }
@@ -298,11 +299,11 @@ async function pollTranscribe() {
       return;
     }
     if (data.phase === "done") {
-      const translationMissing = data.has_english && !data.has_chinese;
+      const translationMissing = Boolean(data.translation_missing);
       retranscribing = false;
       $("retranslate-button").hidden = !translationMissing;
       if (translationMissing) {
-        setStatus("语音识别完成，但中文翻译失败——英文结果已生成，可稍后点『重试翻译』补齐中文。", "error");
+        setStatus("已有内容已保留，部分字幕尚未翻译；可稍后点『重试翻译』补齐缺失部分。", "error");
       } else {
         setStatus("语音识别完成，双语字幕已生成。", "success");
       }

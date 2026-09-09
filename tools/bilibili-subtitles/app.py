@@ -132,7 +132,8 @@ def _run_tts(job: Job, lang: str, voice: str, rate: str) -> None:
 def _whisper_deps_missing() -> str | None:
     """语音识别链路依赖检查；缺失时返回给用户的安装提示。"""
     try:
-        import deep_translator  # noqa: F401
+        import requests  # noqa: F401
+        import bs4  # noqa: F401
         import faster_whisper  # noqa: F401
     except ImportError:
         return WHISPER_INSTALL_HINT
@@ -174,21 +175,24 @@ def _run_transcribe(job: Job, url: str, browser: str, model_name: str) -> None:
         state.phase = "error"
         return
 
-    # 转写（耗时大头）已成功——翻译失败只降级为"缺中文"，不丢弃结果。
+    # 转写已落盘；翻译失败时连同成功的部分译文一起保留。
+    job.rows = result.rows
     try:
         rows, methods = TRANSLATE_ROWS(result.rows, log=say)
         chinese_missing = False
     except Exception as exc:
         rows, methods = result.rows, []
+        if isinstance(exc, direct_generate.PartialTranslationError):
+            rows, methods = exc.rows or rows, exc.methods
         chinese_missing = True
         say(f"      中文翻译失败：{exc}")
         say(f"      处理建议：{direct_generate.translation_failure_hint(exc)}")
-        say("      已保留英文转写结果；额度恢复或配置代理后可点『重试翻译』补翻中文")
+        say("      已保留英文转写和成功译文；恢复后可点『重试翻译』补齐缺失部分")
 
     english_text, chinese_text = direct_generate.split_methods(result.methods + methods)
     job.rows = rows
     job.english_label = english_text or "语音识别"
-    job.chinese_label = ("翻译失败（已保留英文转写）" if chinese_missing
+    job.chinese_label = ((chinese_text + '；' if chinese_text else '') + "翻译失败（已有内容已保留）" if chinese_missing
                          else chinese_text or "机器翻译")
     state.error = ""
     state.phase = "done"
@@ -214,6 +218,14 @@ def _run_retranslate(job: Job) -> None:
     try:
         rows, methods = TRANSLATE_ROWS(job.rows or [], log=say)
     except Exception as exc:
+        if isinstance(exc, direct_generate.PartialTranslationError):
+            job.rows = exc.rows or job.rows
+            english_text, chinese_text = direct_generate.split_methods(exc.methods)
+            if english_text:
+                job.english_label = _merge_label(job.english_label, english_text)
+            if chinese_text:
+                job.chinese_label = _merge_label(job.chinese_label, chinese_text)
+            _mark_missing_labels(job)
         say(f"      重试翻译失败：{exc}")
         say(f"      处理建议：{direct_generate.translation_failure_hint(exc)}")
         state.error = ""  # 已有结果仍可下载，不算任务失败
@@ -222,11 +234,25 @@ def _run_retranslate(job: Job) -> None:
     english_text, chinese_text = direct_generate.split_methods(methods)
     job.rows = rows
     if english_text:
-        job.english_label = english_text
+        job.english_label = _merge_label(job.english_label, english_text)
     if chinese_text:
-        job.chinese_label = chinese_text
+        job.chinese_label = _merge_label(job.chinese_label, chinese_text)
     state.error = ""
     state.phase = "done"
+
+
+def _merge_label(previous: str, current: str) -> str:
+    labels = [label for label in previous.split('；') if label and '翻译失败' not in label]
+    return '；'.join(dict.fromkeys([*labels, *current.split('；')]))
+
+
+def _mark_missing_labels(job: Job) -> None:
+    rows = job.rows or []
+    marker = '翻译失败（仍有缺失内容）'
+    if any(row.english and not row.chinese for row in rows):
+        job.chinese_label = _merge_label(job.chinese_label, marker)
+    if any(row.chinese and not row.english for row in rows):
+        job.english_label = _merge_label(job.english_label, marker)
 
 
 def _video_public(video: ExtractedVideo) -> dict:
@@ -253,7 +279,8 @@ def index():
 
 @app.get("/api/health")
 def health():
-    return jsonify(ok=True, started_at=_SERVER_STARTED_AT)
+    return jsonify(ok=True, started_at=_SERVER_STARTED_AT,
+                   translation_email_configured=bool(os.environ.get('MYMEMORY_EMAIL', '').strip()))
 
 
 @app.post("/api/inspect")
@@ -387,6 +414,7 @@ def transcribe_status(job_id: str):
             count=len(rows),
             has_english=any(row.english for row in rows),
             has_chinese=any(row.chinese for row in rows),
+            translation_missing=_rows_missing_translation(rows),
             notice="内容由语音识别与机器翻译生成，供学习对照，非作者原字幕。",
         )
     return jsonify(payload)

@@ -37,15 +37,39 @@ python -m pip install -r tools/bilibili-subtitles/requirements-whisper.txt
 python tools/bilibili-subtitles/direct_generate.py "https://www.bilibili.com/video/BV..." -o tools/bilibili-subtitles/outputs/BV...
 ```
 
-处理顺序：优先使用视频字幕轨；没有字幕轨时下载临时音频，用 `faster-whisper small.en` 生成英文时间轴，再机器翻译补中文。最终只留下 `.md` 和 `.xlsx`，临时音频自动删除。机器识别/翻译会写进 Markdown 的生成说明，不冒充作者字幕。
+处理顺序：优先使用视频字幕轨；没有字幕轨时复用本地转写，或下载临时音频，用 `faster-whisper small.en` 生成英文时间轴，再机器翻译补中文。输出 `.md` 和 `.xlsx`，转写与成功译文另存本地缓存，临时音频自动删除。机器识别/翻译会写进 Markdown 的生成说明，不冒充作者字幕。
 
-机器翻译是自动切换的后端链：先 3 秒探测 Google Translate（可达则优先用，质量更好）；
-不可达时直接使用 MyMemory（免 key）。MyMemory 单条限 500 字符会自动按句分片，
-且限 5 请求/秒——逐条请求间已内置 0.3 秒节流，触发限流时会自动等待 10/20 秒再试；
-匿名每日额度有限（用尽会失败），设置环境变量 `MYMEMORY_EMAIL` 可提额。有代理时设
-`HTTPS_PROXY` 即可走回 Google 路径。翻译失败不会丢掉已完成的转写结果：网页会保留
-英文字幕并提供「重试翻译」按钮（额度每天重置，恢复后一键补翻，无需重跑语音识别），
-命令行则保留现有内容照常导出文件；失败原因和处理建议会写进日志。
+机器翻译先检查所有后端的缓存，再尝试 Google Translate → MyMemory（免 key）。
+Google 使用网页翻译端点，并非 Google Cloud Translation API；可设置 `HTTPS_PROXY`。
+请求的连接超时为 5 秒、读取超时为 20 秒。网络故障/服务端 5xx 最多尝试 3 次；
+重试耗尽后该后端冷却 60 秒。HTTP 429 按 `Retry-After`（支持秒数或 HTTP 日期）
+冷却，缺失时默认 60 秒，随后切换后端；无效输入不反复重试。
+
+同一缓存目录下的网页、CLI 和多个视频共用请求节奏：Google 请求起点至少间隔 1 秒，
+MyMemory 至少间隔 0.5 秒。这是保守默认值，不代表服务方承诺不会限流。
+MyMemory 使用 HTTPS，单次按 UTF-8 **字节**限制切分（采用 480 字节余量，接口上限 500 字节）。
+根据[官方额度说明](https://mymemory.translated.net/doc/usagelimits.php)，匿名为每天 5,000 字符，
+提供可联系的有效邮箱后为每天 50,000 字符；额度耗尽时暂停该邮箱对应后端一小时，
+防止每次重试继续请求，恢复时间仍以服务方为准。设置 `MYMEMORY_EMAIL` 后需重新启动进程。
+页面右上角显示邮箱是否已配置，不显示具体地址，也不代表已向服务方验证额度。
+
+### 翻译失败、刷新或重启后如何继续
+
+- **本页任务仍在**：点「重试翻译」，只补缺失的语言；已经成功的中文仍能阅读、下载。
+- **刷新页面或重启服务**：重新输入相同视频链接，读取后再点识别按钮。相同链接、分 P、
+  模型和识别提示会复用已完成的转写，日志显示「复用本地转写」，不重下音频、不重跑 Whisper；
+  翻译阶段复用成功分片。CLI 重新运行原命令也会复用这些缓存。
+- **识别尚未完成就退出**：下次仍需重新识别；识别缓存仅在完整识别成功后写入。
+- **字幕轨模式**：网页会重新读取并对齐已有字幕轨，本身不调用机器翻译；CLI 一键模式需要补译时可复用翻译缓存。
+- 成功译文逐分片保存。即使同一条长字幕的后续分片失败，前面分片也不会在重试时重复请求。
+- 本地缓存默认在 `outputs/.cache/translation.sqlite3`，包含转写文本、译文和后端冷却时间，
+  不保存浏览器 Cookie 或邮箱明文，也不提交 Git。可用 `BILIBILI_CACHE_DIR` 指定其他目录；
+  网页和 CLI 要共享限流/缓存，必须使用同一目录。
+- 缓存没有自动清理期限。视频内容更新或需要重新识别/翻译时，可先停止工具，手动移走
+  `outputs/.cache/` 作为备份，重启后会建立新缓存。当前不会自动恢复旧网页任务或未下载的 MP3。
+
+翻译不完整时，网页提供补翻按钮，CLI 继续导出部分结果；方法说明会保留实际译文来源，
+失败原因和恢复建议写入日志。
 
 ## 能处理什么
 
@@ -60,9 +84,9 @@ python tools/bilibili-subtitles/direct_generate.py "https://www.bilibili.com/vid
 
 - 网页模式不下载视频；语音识别只临时下载音频（自动选最低码率音轨，Whisper 内部会重采样，高码率无收益），识别完自动删除，不落盘。
 - 语音识别依赖是可选的：未装 `requirements-whisper.txt` 时网页会提示安装命令，其余功能不受影响。
-- 语音识别任务在内存中运行，刷新页面会丢进度，需要重新识别；识别 + 翻译全程约几分钟（20 分钟视频约 8 分钟），请保持页面打开。
+- 任务进度在内存中，刷新后需重新读取链接；已完成转写和成功译文保存在本地，按上面的步骤复用。
 - 中文语音视频暂不支持自动转写（Whisper 模型用 `small.en`，仅英文）。
-- 机器翻译用 Google Translate / MyMemory 后端链（自动探测切换），结果需要抽查；MyMemory 对习语（如 over the moon）可能直译。
+- 机器翻译用 Google Translate / MyMemory 后端链（缓存优先、失败切换），结果需要抽查；MyMemory 对习语（如 over the moon）可能直译。
 - 「转 MP3」依赖兄弟工具 `tools/text2mp3/` 的 `tts_core.py`（模块互调只发生在核心逻辑层，两个网页应用保持独立）；需要安装 `tools/text2mp3/requirements.txt`（edge-tts）。缺依赖时页面给出安装提示，其余功能不受影响。
 - 画面里烧录的字幕不会做 OCR；无字幕轨时识别的是音频内容。
 - Excel 由纯标准库生成，采用 Excel 原生的 sharedStrings + theme 形态（预览窗格 / 手机端 / 微信 QQ 预览等轻量查看器也兼容；早期 inlineStr 版本在部分查看器里显示空白）。
@@ -78,6 +102,8 @@ python tools/bilibili-subtitles/direct_generate.py "https://www.bilibili.com/vid
 | `subtitle_core.py` | 字幕解析、语言识别、双语拆分、时间轴对齐、Markdown、SRT |
 | `xlsx_export.py` | 标准 OOXML Excel 导出（无需额外 Excel 库） |
 | `direct_generate.py` | 管线核心（音频下载 → Whisper 转写 → 翻译）；一条命令直接输出文件 |
+| `translation_store.py` | SQLite 转写/译文缓存，以及跨进程请求节流、冷却 |
+| `translation_backends.py` | Google / MyMemory HTTP 适配、超时、额度/限流判定、UTF-8 分片 |
 | `tts_bridge.py` | 引用 text2mp3 的 tts_core：行→朗读文本、分片合成、拼接 MP3 |
 | `templates/index.html` / `static/*` | 电脑端双语阅读界面与语音识别进度 |
 

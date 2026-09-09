@@ -8,10 +8,12 @@ from __future__ import annotations
 import argparse
 import os
 import re
+import sqlite3
 import sys
+import json
 import tempfile
 import time
-from dataclasses import dataclass, replace
+from dataclasses import asdict, dataclass, replace
 from pathlib import Path
 from typing import Callable, Sequence
 
@@ -77,6 +79,17 @@ def apply_translations(
 _SENTENCE_ENDERS = ".!?。！？；;"
 _CJK_TAIL = re.compile(r"[一-鿿。！？；：、）】]$")
 Backend = tuple[str, Callable[[str], str], int]
+
+
+class PartialTranslationError(RuntimeError):
+    """Incomplete work is still useful; callers can export it or resume later."""
+
+    def __init__(self, message, translations=(), label='', rows=(), methods=()):
+        super().__init__(message)
+        self.translations = list(translations)
+        self.label = label
+        self.rows = list(rows)
+        self.methods = list(methods)
 
 
 def _iter_sentences(text: str):
@@ -175,9 +188,14 @@ def _translate_with_retries(
     last_error: Exception | None = None
     for attempt in range(retries):
         try:
-            return fn(text)
+            value = fn(text)
+            if not isinstance(value, str) or not value.strip():
+                raise RuntimeError('翻译服务返回空译文')
+            return value
         except Exception as exc:
             last_error = exc
+            if not getattr(exc, 'retryable', True):
+                raise
             if attempt + 1 < retries:
                 if _is_rate_limit_error(exc):
                     # 限流按秒级恢复：短退避只会连撞，等 10s/20s 再试
@@ -194,38 +212,35 @@ def _google_reachable(timeout: float = 3.0) -> bool:
     try:
         import requests
 
-        response = requests.head("https://translate.googleapis.com", timeout=timeout)
-        return response.status_code < 500
+        from translation_backends import GOOGLE_URL
+        response = requests.head(GOOGLE_URL, timeout=timeout)
+        try:
+            return response.status_code < 400
+        finally:
+            response.close()
     except Exception:
         return False
 
 
-def _build_backends(source: str, target: str, probe: bool = True) -> list[Backend]:
-    """翻译后端链：Google 质量优先，不可达时自动退到 MyMemory（免 key）。"""
+def _build_backends(source: str, target: str, probe: bool = False) -> list[Backend]:
+    """构造后端不触网；可选 probe 仅供诊断，实际请求由后端超时/冷却保护。"""
     try:
-        from deep_translator import GoogleTranslator, MyMemoryTranslator
+        import requests  # noqa: F401
+        import bs4  # noqa: F401
     except ImportError as exc:
         raise RuntimeError("缺少翻译依赖，请安装 requirements-whisper.txt") from exc
 
-    names = {"en": "english", "zh-CN": "chinese simplified"}
+    from translation_backends import HttpTranslator
+    from translation_store import default_store
+    store = default_store()
     chain: list[Backend] = []
     if not probe or _google_reachable():
-        google = GoogleTranslator(source=source, target=target)
+        google = HttpTranslator('Google Translate', source, target, store)
         chain.append(("Google Translate", google.translate, 4500))
     else:
         print("      Google 翻译不可达，直接使用 MyMemory（有代理时可设 HTTPS_PROXY）", flush=True)
-    # MyMemory 匿名额度有限；设置环境变量 MYMEMORY_EMAIL 可提额（可选）。
-    email = os.environ.get("MYMEMORY_EMAIL") or None
-    mymemory = MyMemoryTranslator(source=names[source], target=names[target], email=email)
-
-    def mymemory_translate(text: str) -> str:
-        result = mymemory.translate(text)
-        # MyMemory 额度用尽时返回 HTTP 200，但译文是警告文本，必须识别为失败。
-        if result and result.strip().upper().startswith("MYMEMORY WARNING"):
-            raise RuntimeError(f"MyMemory 额度告警：{result.strip()[:120]}")
-        return result
-
-    chain.append(("MyMemory", mymemory_translate, 480))
+    mymemory = HttpTranslator('MyMemory', source, target, store)
+    chain.append(("MyMemory", mymemory.translate, 480))
     return chain
 
 
@@ -251,32 +266,90 @@ def translate_texts(
     retry_sleep: float = 1.5,
     request_interval: float = 0.3,
     log: Callable[[str], None] | None = None,
+    cache=None,
 ) -> tuple[list[str], str]:
     """多后端翻译：当前后端重试耗尽即永久切换下一个，返回 (译文, 实际后端名)。"""
     say = log or (lambda message: print(message, flush=True))
     active = list(backends) if backends is not None else _build_backends(source, target)
+    if cache is None and backends is None:
+        from translation_store import default_store
+        cache = default_store()
     if not active:
         raise RuntimeError("没有可用的翻译后端")
+    configured = tuple(active)
     results: list[str] = []
     used: list[str] = []
     total = len(texts)
     last_error: Exception | None = None
     paced = False  # 仅第一个请求前不等待
+    memo = {}
+
+    def read_cached(namespace, chunk):
+        key = (namespace, chunk)
+        value = memo.get(key)
+        if value is None and cache is not None:
+            try:
+                value = cache.get(namespace, chunk)
+            except (OSError, sqlite3.Error) as exc:
+                say(f'      无法读取翻译缓存，本次继续请求后端：{exc}')
+                value = None
+        if isinstance(value, str) and value.strip():
+            memo[key] = value
+            return value
+        return None
+
+    def split_chunks(label, text, limit):
+        from translation_backends import split_utf8
+        return split_utf8(text, limit) if label == 'MyMemory' else split_for_limit(text, limit)
+
     for text in texts:
         translated: str | None = None
-        while active:
+        # Cached results from any provider take precedence over new requests, even
+        # if that provider is cooling down or was disabled earlier in this batch.
+        for label, _, limit in configured:
+            chunks = split_chunks(label, text, limit)
+            saved_parts = [read_cached(f'translation-v2:{label}:{source}:{target}', chunk) for chunk in chunks]
+            if saved_parts and all(part is not None for part in saved_parts):
+                translated = join_parts(saved_parts)
+                say(f'      复用已保存译文（{label}）')
+                if label not in used:
+                    used.append(label)
+                break
+        while translated is None and active:
             label, fn, limit = active[0]
             try:
                 parts = []
-                for chunk in split_for_limit(text, limit):
-                    if paced:
-                        # MyMemory 免费档限 5 请求/秒：逐条节流，稳在限制之下
+                chunks = split_chunks(label, text, limit)
+                for chunk in chunks:
+                    namespace = f'translation-v2:{label}:{source}:{target}'
+                    key = (namespace, chunk)
+                    saved = read_cached(namespace, chunk)
+                    if saved is not None:
+                        parts.append(saved)
+                        say('      复用已保存译文')
+                        continue
+                    if paced and backends is not None:
+                        # Injectable/custom providers retain the local pacing API.
                         time.sleep(request_interval)
                     paced = True
-                    parts.append(_translate_with_retries(
-                        fn, chunk, retries, retry_sleep, log=say))
+                    value = _translate_with_retries(fn, chunk, retries, retry_sleep, log=say)
+                    memo[key] = value
+                    if cache is not None:
+                        try:
+                            cache.put(namespace, chunk, value)
+                        except (OSError, sqlite3.Error) as exc:
+                            say(f'      翻译缓存未能保存，本次译文仍会保留：{exc}')
+                    parts.append(value)
             except Exception as exc:
                 last_error = exc
+                if backends is None and getattr(exc, 'retryable', True):
+                    # Retry exhaustion should not restart a failing provider in
+                    # every new job. The HTTP adapters share this store as well.
+                    from translation_store import default_store
+                    try:
+                        default_store().cooldown(label, 60, str(exc))
+                    except (OSError, sqlite3.Error) as cache_exc:
+                        say(f'      无法保存后端冷却状态，本次仍会切换后端：{cache_exc}')
                 say(f"      翻译后端 {label} 不可用（{exc}），切换下一个")
                 active.pop(0)
                 continue
@@ -285,7 +358,7 @@ def translate_texts(
                 used.append(label)
             break
         if translated is None:
-            raise RuntimeError(f"所有翻译后端均失败：{last_error}")
+            raise PartialTranslationError(f"所有翻译后端均失败：{last_error}", results, ' / '.join(used))
         results.append(translated)
         if progress:
             progress(len(results), total)
@@ -303,22 +376,32 @@ def fill_missing_languages(
     missing_zh = [index for index, row in enumerate(result) if row.english and not row.chinese]
     if missing_zh:
         say(f"[4/5] 翻译英文 → 中文：{len(missing_zh)} 条")
-        values, backend_label = translate_texts(
-            [result[index].english for index in missing_zh], "en", "zh-CN",
-            lambda done, total: say(f"      翻译进度 {done}/{total}"),
-            backends=backends, log=say,
-        )
+        try:
+            values, backend_label = translate_texts(
+                [result[index].english for index in missing_zh], "en", "zh-CN",
+                lambda done, total: say(f"      翻译进度 {done}/{total}"),
+                backends=backends, log=say,
+            )
+        except PartialTranslationError as exc:
+            exc.rows = apply_translations(result, missing_zh[:len(exc.translations)], exc.translations, 'chinese')
+            exc.methods = methods + ([f'中文：{exc.label} 机器翻译'] if exc.label else [])
+            raise
         result = apply_translations(result, missing_zh, values, "chinese")
         methods.append(f"中文：{backend_label} 机器翻译")
 
     missing_en = [index for index, row in enumerate(result) if row.chinese and not row.english]
     if missing_en:
         say(f"[4/5] 翻译中文 → 英文：{len(missing_en)} 条")
-        values, backend_label = translate_texts(
-            [result[index].chinese for index in missing_en], "zh-CN", "en",
-            lambda done, total: say(f"      翻译进度 {done}/{total}"),
-            backends=backends, log=say,
-        )
+        try:
+            values, backend_label = translate_texts(
+                [result[index].chinese for index in missing_en], "zh-CN", "en",
+                lambda done, total: say(f"      翻译进度 {done}/{total}"),
+                backends=backends, log=say,
+            )
+        except PartialTranslationError as exc:
+            exc.rows = apply_translations(result, missing_en[:len(exc.translations)], exc.translations, 'english')
+            exc.methods = methods + ([f'English：{exc.label} 机器翻译'] if exc.label else [])
+            raise
         result = apply_translations(result, missing_en, values, "english")
         methods.append(f"English：{backend_label} 机器翻译")
     return result, methods
@@ -439,20 +522,46 @@ def generate_rows_from_audio(
     model_name: str = "small.en",
     log: Callable[[str], None] | None = None,
 ) -> AudioPipelineResult:
-    """下载临时音频并转写成双语行（不翻译、不落盘）；网页模式与 CLI 共用。"""
+    """复用本地转写，或下载临时音频识别并保存结果；网页模式与 CLI 共用。"""
     say = log or (lambda message: print(message, flush=True))
+    from translation_store import default_store
+    store = default_store()
+    normalized_url = core.normalize_bilibili_url(url)
+    namespace = 'audio-transcript-v1'
+    key = json.dumps([normalized_url, model_name, DEFAULT_TRANSCRIBE_PROMPT], ensure_ascii=False)
+    try:
+        cached = store.get(namespace, key)
+    except (OSError, sqlite3.Error) as exc:
+        say(f'      无法读取转写缓存，将重新识别：{exc}')
+        cached = None
+    if cached:
+        try:
+            result = AudioPipelineResult(
+                title=cached['title'], source_url=cached['source_url'],
+                rows=[core.BilingualRow(**row) for row in cached['rows']], methods=cached['methods'],
+            )
+            if result.rows:
+                say(f'[3/5] 复用本地转写：{len(result.rows)} 条，无需重新下载或识别')
+                return result
+        except (KeyError, TypeError, ValueError):
+            say('      转写缓存格式无效，将重新识别')
     say("[2/5] 下载临时音频（最终不会保留）")
     with tempfile.TemporaryDirectory(prefix="bili-subtitle-") as temp:
         audio_path, info = download_audio(url, Path(temp), browser)
         size_mb = audio_path.stat().st_size / 1024 / 1024
         say(f"      音频：{audio_path.suffix} · {size_mb:.1f} MB")
         captions = transcribe_audio(audio_path, model_name, log=say)
-    return AudioPipelineResult(
+    result = AudioPipelineResult(
         title=str(info.get("title") or "B站视频"),
         source_url=str(info.get("webpage_url") or url),
         rows=core.align_captions(captions, []),
         methods=[f"English：faster-whisper {model_name} 机器识别"],
     )
+    try:
+        store.put(namespace, key, asdict(result))
+    except (OSError, sqlite3.Error) as exc:
+        say(f'      转写缓存未能保存，本次内容仍可导出，重启后不能复用：{exc}')
+    return result
 
 
 def generate(
@@ -478,11 +587,17 @@ def generate(
             rows, translation_methods = fill_missing_languages(rows)
             methods.extend(translation_methods)
         except Exception as exc:
+            if isinstance(exc, PartialTranslationError):
+                rows = exc.rows or rows
+                methods.extend(exc.methods)
             # 转写（耗时大头）已完成：翻译失败只降级为缺中文，仍写出结果文件。
             print("警告：机器翻译失败，已保留现有内容继续导出", flush=True)
             print(f"  原因：{exc}", flush=True)
             print(f"  处理：{translation_failure_hint(exc)}", flush=True)
-            methods.append("中文：机器翻译失败（内容已保留）")
+            if any(row.english and not row.chinese for row in rows):
+                methods.append("中文：机器翻译失败（内容已保留）")
+            if any(row.chinese and not row.english for row in rows):
+                methods.append("English：机器翻译失败（内容已保留）")
     print("[5/5] 写入 Markdown / Excel", flush=True)
     output_dir.mkdir(parents=True, exist_ok=True)
     basename = core.sanitize_filename(title) + "-双语字幕"

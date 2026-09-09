@@ -11,6 +11,11 @@ from zipfile import ZipFile
 
 import pytest
 
+
+@pytest.fixture(autouse=True)
+def isolated_translation_cache(tmp_path, monkeypatch):
+    monkeypatch.setenv('BILIBILI_CACHE_DIR', str(tmp_path / 'bilibili-cache'))
+
 BASE = Path(__file__).parents[1] / "tools" / "bilibili-subtitles"
 sys.path.insert(0, str(BASE))
 
@@ -412,7 +417,8 @@ def test_translate_texts_chunks_texts_over_backend_limit():
         calls.append(text)
         return "句。"
 
-    long_text = "Sentence one here. " * 30
+    # Distinct chunks exercise splitting; repeated chunks now intentionally hit cache.
+    long_text = "".join(f"Sentence number {index} here. " for index in range(30))
     translations, _label = translate_texts(
         [long_text], "en", "zh-CN",
         backends=[("X", working, 100)],
@@ -460,15 +466,16 @@ def test_fill_missing_languages_reports_progress_via_log():
 
 
 def test_build_backends_skips_unreachable_google(monkeypatch):
-    pytest.importorskip("deep_translator")
+    pytest.importorskip("requests")
+    pytest.importorskip("bs4")
     import direct_generate
 
     monkeypatch.setattr(direct_generate, "_google_reachable", lambda timeout=3.0: False)
-    backends = direct_generate._build_backends("en", "zh-CN")
+    backends = direct_generate._build_backends("en", "zh-CN", probe=True)
     assert [backend[0] for backend in backends] == ["MyMemory"]
 
     monkeypatch.setattr(direct_generate, "_google_reachable", lambda timeout=3.0: True)
-    backends = direct_generate._build_backends("en", "zh-CN")
+    backends = direct_generate._build_backends("en", "zh-CN", probe=True)
     assert [backend[0] for backend in backends] == ["Google Translate", "MyMemory"]
 
 
@@ -875,6 +882,7 @@ def test_transcribe_rejects_duplicate_start(monkeypatch):
     web = _load_web()
     job_id = web.jobs.put(web.Job(video=_no_track_video()))
     monkeypatch.setattr(web, "_whisper_deps_missing", lambda: None)
+    monkeypatch.setattr(web, "TRANSLATE_ROWS", lambda rows, log=None: (list(rows), []))
     release = threading.Event()
     pipeline_started = threading.Event()
 
