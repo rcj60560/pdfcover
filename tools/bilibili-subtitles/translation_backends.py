@@ -15,6 +15,7 @@ from translation_store import ProviderCoolingDown, TranslationStore
 GOOGLE_URL = 'https://translate.google.com/m'
 MYMEMORY_URL = 'https://api.mymemory.translated.net/get'
 REQUEST_TIMEOUT = (5, 20)
+GOOGLE_HEADERS = {'User-Agent': 'Mozilla/5.0'}
 _LOCAL_LOCK = Lock()
 _LOCAL_NEXT: dict[str, float] = {}
 _LOCAL_COOLDOWN: dict[str, tuple[float, str]] = {}
@@ -129,7 +130,8 @@ class HttpTranslator:
             params['de'] = self.email
         try:
             response = self.get(MYMEMORY_URL if is_mymemory else GOOGLE_URL,
-                                params=params, timeout=REQUEST_TIMEOUT)
+                                params=params, timeout=REQUEST_TIMEOUT,
+                                **({} if is_mymemory else {'headers': GOOGLE_HEADERS}))
         except Exception as exc:
             # Requests exceptions can embed the URL, including text/email: don't log it.
             raise TranslationServiceError(f'{self.label} 网络请求失败（{type(exc).__name__}）', retryable=True) from exc

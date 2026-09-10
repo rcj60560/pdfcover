@@ -174,6 +174,7 @@ def test_google_uses_actual_html_endpoint(tmp_path):
         assert url == 'https://translate.google.com/m'
         assert kwargs['params'] == {'q': 'hello', 'sl': 'en', 'tl': 'zh-CN'}
         assert kwargs['timeout'] == (5, 20)
+        assert kwargs['headers']['User-Agent'].startswith('Mozilla/5.0')
         return Response(text='<div class="result-container">你好 &amp; 世界</div>')
     assert HttpTranslator('Google Translate', 'en', 'zh-CN', TranslationStore(tmp_path / 'db'), get=get).translate('hello') == '你好 & 世界'
 
