@@ -65,3 +65,15 @@ def test_to_disk_rejects_traversal(tmp_path):
     for bad in ("/docs/..%2F..%2Fx.md", "/docs/a/../../../x.md", "/..%5C..%5Cx.md", "/docs/..%5Cx.md"):
         with pytest.raises(ValueError):
             to_disk(bad, tmp_path)
+
+
+def test_sync_front_files_and_read_src(tmp_path):
+    import sync_subtitles
+    files = sync_subtitles.front_files(TOOL)
+    assert [f.name for f in files] == ["index.html", "app.js", "core.js", "style.css"]
+
+    cfg = tmp_path / "config.json"
+    real = tmp_path / "real"; real.mkdir()
+    cfg.write_text('{"src_root": "%s"}' % str(real).replace("\\", "\\\\"), encoding="utf-8")
+    assert sync_subtitles.read_src(cfg) == real
+    assert sync_subtitles.read_src(tmp_path / "没有.json") == TOOL / "fixtures" / "docs"
