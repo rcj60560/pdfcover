@@ -82,6 +82,7 @@ function enterStandby() {
 
 function startFollowing() {
   $("#standby").hidden = true;
+  $("#controls").hidden = false;
   state.clock.start(0);
   state.timer = setInterval(tick, 500);
   tick();

@@ -3,6 +3,8 @@
   --accent: #0969da; --accent-soft: #ddf4ff;
 }
 * { box-sizing: border-box; }
+/* hidden 属性优先于任何 display 规则（否则 #standby 的 display:flex 会顶掉 hidden） */
+[hidden] { display: none !important; }
 html { -webkit-text-size-adjust: 100%; }
 body {
   margin: 0; color: var(--fg); background: var(--bg);
