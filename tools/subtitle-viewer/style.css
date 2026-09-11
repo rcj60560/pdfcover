@@ -1,0 +1,85 @@
+:root {
+  --fg: #1f2328; --muted: #6a737d; --bg: #ffffff; --card: #f6f8fa;
+  --accent: #0969da; --accent-soft: #ddf4ff;
+}
+* { box-sizing: border-box; }
+html { -webkit-text-size-adjust: 100%; }
+body {
+  margin: 0; color: var(--fg); background: var(--bg);
+  font-family: -apple-system, "PingFang SC", "Microsoft YaHei", sans-serif;
+  line-height: 1.6;
+}
+
+/* 顶栏 */
+#topbar {
+  position: sticky; top: 0; z-index: 10;
+  display: flex; align-items: center; gap: 12px;
+  padding: 10px 16px; background: var(--bg);
+  border-bottom: 1px solid #eaeef2;
+}
+#topbar h1 { font-size: 17px; margin: 0; flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+#clock { font-variant-numeric: tabular-nums; color: var(--accent); font-weight: 600; }
+#back { border: none; background: none; color: var(--accent); font-size: 16px; padding: 4px; }
+
+/* 列表 */
+#list { max-width: 720px; margin: 0 auto; padding: 12px 16px 40px; }
+.group { font-size: 14px; color: var(--muted); margin: 22px 0 8px; }
+.docs { list-style: none; margin: 0; padding: 0; }
+.doc {
+  display: flex; justify-content: space-between; align-items: baseline; gap: 12px;
+  padding: 12px 14px; margin-bottom: 8px; border-radius: 10px;
+  background: var(--card); color: var(--fg); text-decoration: none;
+}
+.doc-title { font-size: 15px; }
+.doc-meta { font-size: 12px; color: var(--muted); white-space: nowrap; }
+.empty { color: var(--muted); text-align: center; margin-top: 40vh; }
+.empty code { background: var(--card); padding: 2px 6px; border-radius: 6px; }
+
+/* 字幕块 */
+#doc { max-width: 720px; margin: 0 auto; padding: 12px 16px 120px; }
+.blk { padding: 14px 12px; border-radius: 12px; border-left: 4px solid transparent; }
+.blk .ts {
+  border: none; background: none; padding: 0; font-size: 12px;
+  color: var(--muted); font-variant-numeric: tabular-nums; cursor: pointer;
+}
+.blk .en { font-size: 19px; font-weight: 600; margin: 6px 0 4px; }
+.blk .zh { font-size: 14px; color: var(--muted); margin: 0; }
+.blk.is-on {
+  background: var(--accent-soft);
+  border-left-color: var(--accent);
+}
+#blocks.static .blk { background: var(--card); margin-bottom: 10px; }
+
+/* 底部控制条 */
+#controls {
+  position: fixed; left: 50%; transform: translateX(-50%);
+  bottom: max(16px, env(safe-area-inset-bottom)); z-index: 10;
+  display: flex; gap: 10px;
+}
+#controls button {
+  min-width: 64px; padding: 12px 18px; border-radius: 999px; border: none;
+  background: var(--fg); color: #fff; font-size: 16px;
+}
+#back-cur {
+  position: fixed; right: 16px; bottom: 84px; z-index: 10;
+  padding: 10px 14px; border-radius: 999px; border: none;
+  background: var(--accent); color: #fff; font-size: 14px;
+}
+#ended {
+  position: fixed; top: 60px; left: 50%; transform: translateX(-50%);
+  padding: 8px 16px; border-radius: 999px;
+  background: var(--fg); color: #fff; font-size: 14px;
+}
+
+/* 待命遮罩 */
+#standby {
+  position: fixed; inset: 0; z-index: 20;
+  display: flex; align-items: center; justify-content: center;
+  background: rgba(255, 255, 255, 0.96);
+}
+#standby-btn {
+  display: flex; flex-direction: column; align-items: center; gap: 8px;
+  width: 220px; height: 220px; border-radius: 50%; border: none;
+  background: var(--accent); color: #fff; font-size: 56px;
+}
+#standby-btn small { font-size: 14px; font-weight: 500; }
