@@ -37,3 +37,23 @@ def test_collect_docs(tmp_path):
     assert docs[0]["title"] == "Unit 1"
     assert docs[0]["count"] == 2
     assert docs[0]["duration"] == 14
+
+
+def test_resolve_docs_dir(tmp_path):
+    from dev_server import resolve_docs_dir
+    cfg = tmp_path / "config.json"
+    real = tmp_path / "real"; real.mkdir()
+    cfg.write_text('{"src_root": "%s"}' % str(real).replace("\\", "\\\\"), encoding="utf-8")
+    assert resolve_docs_dir(cfg, tmp_path / "fallback") == real
+    cfg.write_text('{"src_root": "Z:\\\\不存在的目录"}', encoding="utf-8")
+    assert resolve_docs_dir(cfg, tmp_path / "fallback") == tmp_path / "fallback"
+    assert resolve_docs_dir(tmp_path / "没有.json", tmp_path / "fallback") == tmp_path / "fallback"
+
+
+def test_to_disk_maps_docs(tmp_path):
+    from dev_server import to_disk
+    assert to_disk("/docs/", tmp_path) == tmp_path
+    assert to_disk("/docs", tmp_path) == tmp_path
+    assert to_disk("/docs/a%20b.md", tmp_path) == tmp_path / "a b.md"
+    assert to_disk("/").name == "index.html"
+    assert to_disk("/manifest.json").name == "manifest.json"
