@@ -34,6 +34,8 @@ def to_disk(url_path: str, docs_dir: Path | None = None) -> Path:
     """URL -> 磁盘路径：/docs/** 映射字幕目录。纯函数，可单测。"""
     docs_dir = docs_dir if docs_dir is not None else DOCS_DIR
     rel = unquote(url_path).lstrip("/")
+    if ".." in rel.replace("\\", "/").split("/"):
+        raise ValueError("路径不允许包含 ..")
     if rel == "docs" or rel.startswith("docs/"):
         sub = rel[len("docs/"):] if rel.startswith("docs/") else ""
         return docs_dir / sub
@@ -47,7 +49,11 @@ class Handler(BaseHTTPRequestHandler):
         if path == "/manifest.json":
             self._send_json({"docs": collect_docs(DOCS_DIR)})
             return
-        disk = to_disk(path)
+        try:
+            disk = to_disk(path)
+        except ValueError:
+            self.send_error(404, "Not Found")
+            return
         if path.rstrip("/") == "/docs" or path.startswith("/docs/"):
             if disk.is_file():
                 self._send_file(disk)

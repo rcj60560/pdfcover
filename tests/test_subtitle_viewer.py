@@ -57,3 +57,11 @@ def test_to_disk_maps_docs(tmp_path):
     assert to_disk("/docs/a%20b.md", tmp_path) == tmp_path / "a b.md"
     assert to_disk("/").name == "index.html"
     assert to_disk("/manifest.json").name == "manifest.json"
+
+
+def test_to_disk_rejects_traversal(tmp_path):
+    import pytest
+    from dev_server import to_disk
+    for bad in ("/docs/..%2F..%2Fx.md", "/docs/a/../../../x.md", "/..%5C..%5Cx.md", "/docs/..%5Cx.md"):
+        with pytest.raises(ValueError):
+            to_disk(bad, tmp_path)
