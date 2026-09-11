@@ -4,6 +4,9 @@ from pathlib import Path
 
 TOOL = Path(__file__).parents[1] / "tools" / "subtitle-viewer"
 sys.path.insert(0, str(TOOL))
+# 全量跑测时 speaking-player 等工具的同名 dev_server 已缓存进 sys.modules；清掉，让下面的导入用本工具的
+for _stale in ("dev_server", "subtitle_lib", "sync_subtitles"):
+    sys.modules.pop(_stale, None)
 
 
 def test_parse_ts():
@@ -77,3 +80,12 @@ def test_sync_front_files_and_read_src(tmp_path):
     cfg.write_text('{"src_root": "%s"}' % str(real).replace("\\", "\\\\"), encoding="utf-8")
     assert sync_subtitles.read_src(cfg) == real
     assert sync_subtitles.read_src(tmp_path / "没有.json") == TOOL / "fixtures" / "docs"
+
+
+def test_manifest_discovers_subtitle_viewer():
+    sys.path.insert(0, str(Path(__file__).parents[1]))
+    from launcher.manifest import load_tools
+
+    tools = {t.slug: t for t in load_tools(Path(__file__).parents[1] / "tools")}
+    assert tools["subtitle-viewer"].port == 8800
+    assert tools["subtitle-viewer"].status == "ready"
