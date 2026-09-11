@@ -95,3 +95,25 @@ export function formatMs(ms) {
     ? `${h}:${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}`
     : `${m}:${String(s).padStart(2, "0")}`;
 }
+
+export function renderBlock(b, i, active) {
+  return (
+    `<section class="blk${active ? " is-on" : ""}" data-i="${i}">` +
+    `<button class="ts" data-i="${i}">${esc(b.tsLabel)}</button>` +
+    `<p class="en">${esc(b.en)}</p>` +
+    (b.zh ? `<p class="zh">${esc(b.zh)}</p>` : "") +
+    `</section>`
+  );
+}
+
+export function groupManifest(docs) {
+  const map = new Map();
+  for (const d of docs) {
+    const dir = d.path.includes("/") ? d.path.slice(0, d.path.lastIndexOf("/")) : "";
+    if (!map.has(dir)) map.set(dir, []);
+    map.get(dir).push(d);
+  }
+  return [...map.entries()]
+    .sort((a, b) => a[0].localeCompare(b[0], "zh-CN"))
+    .map(([dir, items]) => ({ dir: dir || "字幕", items }));
+}

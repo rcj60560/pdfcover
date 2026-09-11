@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import {
   parseTs, parseSubtitleMd, currentBlockIndex, isEnded, SyncClock, formatMs,
 } from "./core.js";
+import { renderBlock, groupManifest } from "./core.js";
 
 const MD = [
   "# 标题",
@@ -94,4 +95,28 @@ test("formatMs", () => {
   assert.equal(formatMs(83000), "1:23");
   assert.equal(formatMs(3723000), "1:02:03");
   assert.equal(formatMs(-5), "0:00");
+});
+
+test("renderBlock 转义与结构", () => {
+  const b = { startMs: 0, endMs: 6, en: "A<B>&C", zh: "甲&乙", tsLabel: "00:00:00 → 00:00:06" };
+  const html = renderBlock(b, 3, false);
+  assert.ok(html.includes('class="blk" data-i="3"'));
+  assert.ok(html.includes('<button class="ts"'));
+  assert.ok(html.includes("A&lt;B&gt;&amp;C"));
+  assert.ok(html.includes("甲&amp;乙"));
+  const on = renderBlock(b, 3, true);
+  assert.ok(on.includes('class="blk is-on"'));
+  const noZh = renderBlock({ ...b, zh: "" }, 0, false);
+  assert.ok(!noZh.includes('class="zh"'));
+});
+
+test("groupManifest 按目录分组", () => {
+  const groups = groupManifest([
+    { path: "in-use/Unit 1.md", title: "Unit 1", count: 3, duration: 20 },
+    { path: "collins/A.md", title: "A", count: 2, duration: 14 },
+    { path: "root.md", title: "root", count: 1, duration: 6 },
+  ]);
+  // 空串目录（根目录）排序在最前，显示名替换为「字幕」
+  assert.deepEqual(groups.map((g) => g.dir), ["字幕", "collins", "in-use"]);
+  assert.equal(groups[0].items.length, 1);
 });
