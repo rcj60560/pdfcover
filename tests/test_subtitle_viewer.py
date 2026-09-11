@@ -1,0 +1,39 @@
+"""subtitle-viewer：subtitle_lib 纯逻辑 + dev_server + 面板清单发现。"""
+import sys
+from pathlib import Path
+
+TOOL = Path(__file__).parents[1] / "tools" / "subtitle-viewer"
+sys.path.insert(0, str(TOOL))
+
+
+def test_parse_ts():
+    from subtitle_lib import parse_ts
+    assert parse_ts("00:00:06") == 6
+    assert parse_ts("0:06") == 6
+    assert parse_ts("01:02:03") == 3723
+    assert parse_ts("62:05") == 3725
+
+
+def test_has_timestamps():
+    from subtitle_lib import has_timestamps
+    assert has_timestamps("`00:00:00 → 00:00:06`")
+    assert has_timestamps("前言\n\n`3:10 → 3:20`\n\n**a**\n")
+    assert not has_timestamps("# 只有标题\n\n普通文本，没有时间戳。")
+
+
+GOOD_MD = "# 标题\n\n> 来源说明\n\n---\n\n`00:00:00 → 00:00:06`\n\n**Hello.**\n\n你好。\n\n---\n\n`00:00:08 → 00:00:14`\n\n**World.**\n\n世界。\n"
+
+
+def test_collect_docs(tmp_path):
+    from subtitle_lib import collect_docs
+    (tmp_path / "in-use" ).mkdir()
+    (tmp_path / "in-use" / "Unit 1.md").write_text(GOOD_MD, encoding="utf-8")
+    (tmp_path / "plain.md").write_text("# 无时间戳\n", encoding="utf-8")
+    (tmp_path / "_private").mkdir()
+    (tmp_path / "_private" / "x.md").write_text(GOOD_MD, encoding="utf-8")
+
+    docs = collect_docs(tmp_path)
+    assert [d["path"] for d in docs] == ["in-use/Unit 1.md"]
+    assert docs[0]["title"] == "Unit 1"
+    assert docs[0]["count"] == 2
+    assert docs[0]["duration"] == 14

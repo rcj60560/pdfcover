@@ -1,0 +1,12 @@
+name = "字幕跟读器"
+desc = "外部播放视频/音频时，手机打开字幕MD自动滚动跟读（手动对时，±5s 校准）"
+category = "英语"
+status = "ready"
+
+[run]
+cmd = ["python", "dev_server.py"]
+port = 8800
+url = "http://127.0.0.1:8800"
+
+[links]
+live = "http://47.108.230.162/script/subtitles/"
