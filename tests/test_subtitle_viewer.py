@@ -65,7 +65,8 @@ def test_to_disk_maps_docs(tmp_path):
 def test_to_disk_rejects_traversal(tmp_path):
     import pytest
     from dev_server import to_disk
-    for bad in ("/docs/..%2F..%2Fx.md", "/docs/a/../../../x.md", "/..%5C..%5Cx.md", "/docs/..%5Cx.md"):
+    for bad in ("/docs/..%2F..%2Fx.md", "/docs/a/../../../x.md", "/..%5C..%5Cx.md", "/docs/..%5Cx.md",
+                "/docs/c:%2Fx.md", "/docs/%5C%5Cserver%5Cshare%5Cx.md", "/%5C%5Cserver%5Cshare%5Cx.md"):
         with pytest.raises(ValueError):
             to_disk(bad, tmp_path)
 

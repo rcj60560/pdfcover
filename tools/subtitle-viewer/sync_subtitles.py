@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import shlex
 import subprocess
 import sys
 import tempfile
@@ -60,20 +61,24 @@ def main(argv: list[str] | None = None) -> None:
         sys.exit(f"源目录没有含时间戳的 md：{src}")
 
     fronts = front_files(TOOL_DIR)
-    run(["ssh", REMOTE_HOST, f"mkdir -p {REMOTE_BASE}/docs"], args.dry_run)
+    run(["ssh", REMOTE_HOST, f"mkdir -p {shlex.quote(REMOTE_BASE + '/docs')}"], args.dry_run)
     for f in fronts:
         upload(f"{REMOTE_BASE}/", f, args.dry_run)
     for d in docs:
         rel = Path(d["path"])
         if str(rel.parent) != ".":
-            run(["ssh", REMOTE_HOST, f"mkdir -p {REMOTE_BASE}/docs/{rel.parent.as_posix()}"], args.dry_run)
+            run(["ssh", REMOTE_HOST, f"mkdir -p {shlex.quote(REMOTE_BASE + '/docs/' + rel.parent.as_posix())}"], args.dry_run)
         upload(f"{REMOTE_BASE}/docs/{rel.as_posix()}", src / rel, args.dry_run)
 
     with tempfile.NamedTemporaryFile("w", suffix=".json", delete=False, encoding="utf-8") as f:
         json.dump({"docs": docs}, f, ensure_ascii=False, indent=2)
         manifest_tmp = f.name
-    upload(f"{REMOTE_BASE}/manifest.json", Path(manifest_tmp), args.dry_run)
-    run(["ssh", REMOTE_HOST, f"chown -R www:www {REMOTE_BASE}"], args.dry_run)
+    try:
+        upload(f"{REMOTE_BASE}/manifest.json", Path(manifest_tmp), args.dry_run)
+    finally:
+        # 无论上传成败都清掉临时 manifest，避免每次运行遗留一个 tmp json
+        Path(manifest_tmp).unlink(missing_ok=True)
+    run(["ssh", REMOTE_HOST, f"chown -R www:www {shlex.quote(REMOTE_BASE)}"], args.dry_run)
     print(f"完成：{len(fronts)} 个前端文件 + {len(docs)} 篇字幕")
 
 

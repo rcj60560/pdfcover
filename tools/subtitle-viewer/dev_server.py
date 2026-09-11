@@ -30,6 +30,12 @@ def resolve_docs_dir(cfg: Path = BASE / "config.json",
 DOCS_DIR = resolve_docs_dir()
 
 
+def _reject_anchored(p: Path) -> None:
+    """拒绝盘符/根锚定的操作数：pathlib 的 / 会丢弃 base 造成逃逸。"""
+    if p.is_absolute() or p.drive or p.root:
+        raise ValueError("路径不允许为绝对路径")
+
+
 def to_disk(url_path: str, docs_dir: Path | None = None) -> Path:
     """URL -> 磁盘路径：/docs/** 映射字幕目录。纯函数，可单测。"""
     docs_dir = docs_dir if docs_dir is not None else DOCS_DIR
@@ -37,9 +43,12 @@ def to_disk(url_path: str, docs_dir: Path | None = None) -> Path:
     if ".." in rel.replace("\\", "/").split("/"):
         raise ValueError("路径不允许包含 ..")
     if rel == "docs" or rel.startswith("docs/"):
-        sub = rel[len("docs/"):] if rel.startswith("docs/") else ""
+        sub = Path(rel[len("docs/"):] if rel.startswith("docs/") else "")
+        _reject_anchored(sub)
         return docs_dir / sub
-    p = BASE / rel
+    p = Path(rel)
+    _reject_anchored(p)
+    p = BASE / p
     return p if p.suffix else BASE / "index.html"
 
 
