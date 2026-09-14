@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import {
   parseTs, parseSubtitleMd, currentBlockIndex, isEnded, SyncClock, formatMs,
 } from "./core.js";
-import { renderBlock, groupManifest } from "./core.js";
+import { renderBlock, groupManifest, plainText, renderPlain } from "./core.js";
 
 const MD = [
   "# 标题",
@@ -108,6 +108,26 @@ test("renderBlock 转义与结构", () => {
   assert.ok(on.includes('class="blk is-on"'));
   const noZh = renderBlock({ ...b, zh: "" }, 0, false);
   assert.ok(!noZh.includes('class="zh"'));
+});
+
+test("plainText 英空格拼接/中文直接拼接", () => {
+  const { blocks } = parseSubtitleMd(MD);
+  const pt = plainText(blocks);
+  assert.equal(pt.en, "Hello world. Second block.");
+  assert.equal(pt.zh, "你好，世界。第二块。");
+  assert.deepEqual(plainText([]), { en: "", zh: "" });
+});
+
+test("renderPlain 英中分开/复制按钮/转义/无中文省略", () => {
+  const html = renderPlain({ en: "A<B>", zh: "甲" });
+  assert.equal((html.match(/class="plain-part"/g) || []).length, 2);   // 英文/中文两张卡片
+  assert.ok(html.includes('class="copy-btn" data-copy="en"'));
+  assert.ok(html.includes('class="copy-btn" data-copy="zh"'));
+  assert.ok(html.includes("A&lt;B&gt;"));
+  assert.ok(html.includes('class="plain-zh"'));
+  const noZh = renderPlain({ en: "E", zh: "" });
+  assert.ok(!noZh.includes("plain-zh"));
+  assert.equal((noZh.match(/class="plain-part"/g) || []).length, 1);
 });
 
 test("groupManifest 按目录分组", () => {

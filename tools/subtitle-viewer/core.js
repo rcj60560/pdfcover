@@ -106,6 +106,32 @@ export function renderBlock(b, i, active) {
   );
 }
 
+export function plainText(blocks) {          // 底部纯文本对照：英文一大段 + 中文一大段
+  return {
+    en: blocks.map((b) => b.en).filter(Boolean).join(" "),
+    zh: blocks.map((b) => b.zh.replace(/\n+/g, "")).filter(Boolean).join(""),
+  };
+}
+
+export function renderPlain({ en, zh }) {
+  return (
+    `<section id="plain">` +
+    `<section class="plain-part">` +
+    `<header class="plain-head"><span>英文</span>` +
+    `<button class="copy-btn" data-copy="en" type="button">📋 复制</button></header>` +
+    `<p class="plain-en">${esc(en)}</p>` +
+    `</section>` +
+    (zh
+      ? `<section class="plain-part">` +
+        `<header class="plain-head"><span>中文</span>` +
+        `<button class="copy-btn" data-copy="zh" type="button">📋 复制</button></header>` +
+        `<p class="plain-zh">${esc(zh)}</p>` +
+        `</section>`
+      : "") +
+    `</section>`
+  );
+}
+
 export function groupManifest(docs) {
   const map = new Map();
   for (const d of docs) {

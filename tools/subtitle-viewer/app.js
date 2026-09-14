@@ -1,7 +1,7 @@
 // subtitle-viewer/app.js —— 副作用层：fetch / DOM / 计时 / 滚动。逻辑全在 core.js。
 import {
   esc, parseSubtitleMd, currentBlockIndex, isEnded, SyncClock, formatMs,
-  renderBlock, groupManifest,
+  renderBlock, groupManifest, plainText, renderPlain,
 } from "./core.js";
 
 const $ = (sel) => document.querySelector(sel);
@@ -63,6 +63,9 @@ async function openDoc(rel) {
 
   if (!parsed.hasTimestamps) return enterStaticMode(text);
   $("#blocks").innerHTML = state.blocks.map((b, i) => renderBlock(b, i, false)).join("");
+  state.plain = plainText(state.blocks);
+  $("#doc").insertAdjacentHTML("beforeend", renderPlain(state.plain));
+  $("#plain-jump").hidden = false;
   enterStandby();
 }
 
@@ -123,7 +126,41 @@ function scrollToActive() {
 $("#back").addEventListener("click", () => { location.href = location.pathname; });
 
 $("#minus5").addEventListener("click", () => state.clock.shift(-5000));
+$("#minus1").addEventListener("click", () => state.clock.shift(-1000));
+$("#plus1").addEventListener("click", () => state.clock.shift(1000));
 $("#plus5").addEventListener("click", () => state.clock.shift(5000));
+
+$("#plain-jump").addEventListener("click", () => {
+  document.querySelector("#plain")
+    ?.scrollIntoView({ behavior: "smooth", block: "start" });
+});
+
+async function copyText(text) {
+  try {
+    if (navigator.clipboard?.writeText) {
+      await navigator.clipboard.writeText(text);
+      return true;
+    }
+  } catch { /* http 非安全上下文无此 API 或被拒 → 降级 execCommand */ }
+  const ta = document.createElement("textarea");
+  ta.value = text;
+  ta.style.cssText = "position:fixed;opacity:0";
+  document.body.appendChild(ta);
+  ta.select();
+  let ok = false;
+  try { ok = document.execCommand("copy"); } catch { ok = false; }
+  ta.remove();
+  return ok;
+}
+
+$("#doc").addEventListener("click", async (e) => {        // 复制英文/中文（委托：#plain 是动态插入的）
+  const btn = e.target.closest(".copy-btn");
+  if (!btn) return;
+  const text = state.plain?.[btn.dataset.copy] || "";
+  btn.disabled = true;
+  btn.textContent = (await copyText(text)) ? "✓ 已复制" : "✗ 失败";
+  setTimeout(() => { btn.disabled = false; btn.textContent = "📋 复制"; }, 1500);
+});
 
 $("#playpause").addEventListener("click", () => {
   if (state.clock.paused) { state.clock.resume(); $("#playpause").textContent = "⏸"; }
