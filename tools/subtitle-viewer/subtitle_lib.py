@@ -22,8 +22,13 @@ def has_timestamps(text: str) -> bool:
     return TS_RE.search(text) is not None
 
 
+def _natural_key(s: str) -> list[tuple[int, object]]:
+    """自然序键：数字段按数值比较，其余按原文（'Unit 2' < 'Unit 10'，'Part 1' < 'Part 2'）。"""
+    return [(int(p), "") if p.isdigit() else (0, p) for p in re.split(r"(\d+)", s)]
+
+
 def collect_docs(root: Path) -> list[dict]:
-    """递归收集含时间戳的 .md（跳过 _ 开头的目录/文件），按相对路径排序返回 manifest 条目。"""
+    """递归收集含时间戳的 .md（跳过 _ 开头的目录/文件），按标题自然序（Unit 升序）返回 manifest 条目。"""
     root = Path(root)
     docs: list[dict] = []
     for p in sorted(root.rglob("*.md")):
@@ -43,4 +48,5 @@ def collect_docs(root: Path) -> list[dict]:
             "count": len(stamps),
             "duration": max(parse_ts(end) for _, end in stamps),
         })
+    docs.sort(key=lambda d: _natural_key(d["title"]))
     return docs

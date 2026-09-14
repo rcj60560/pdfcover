@@ -42,6 +42,25 @@ def test_collect_docs(tmp_path):
     assert docs[0]["duration"] == 14
 
 
+def test_collect_docs_natural_order(tmp_path):
+    from subtitle_lib import collect_docs
+    for n in [
+        "Vocabulary｜Unit 10 全英导学.md",
+        "Vocabulary｜Unit 2 全英讲解.md",
+        "Vocabulary｜Unit 8 全英导学 Part 2.md",
+        "Vocabulary｜Unit 1 全英讲解.md",
+        "Vocabulary｜Unit 8 全英导学 Part 1.md",
+    ]:
+        (tmp_path / n).write_text(GOOD_MD, encoding="utf-8")
+    assert [d["title"] for d in collect_docs(tmp_path)] == [
+        "Vocabulary｜Unit 1 全英讲解",
+        "Vocabulary｜Unit 2 全英讲解",
+        "Vocabulary｜Unit 8 全英导学 Part 1",
+        "Vocabulary｜Unit 8 全英导学 Part 2",
+        "Vocabulary｜Unit 10 全英导学",
+    ]
+
+
 def test_resolve_docs_dir(tmp_path):
     from dev_server import resolve_docs_dir
     cfg = tmp_path / "config.json"
