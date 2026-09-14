@@ -2,6 +2,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import {
   parseTs, parseSubtitleMd, currentBlockIndex, isEnded, SyncClock, formatMs,
+  targetScrollTop,
 } from "./core.js";
 import { renderBlock, groupManifest, plainText, renderPlain } from "./core.js";
 
@@ -65,6 +66,17 @@ test("isEnded", () => {
   assert.equal(isEnded(B, 13999), false);
   assert.equal(isEnded(B, 14000), true);
   assert.equal(isEnded([], 999), false);
+});
+
+test("targetScrollTop 插值/边界/空", () => {
+  const kf = [{ t: 0, y: 100 }, { t: 6000, y: 400 }, { t: 20000, y: 900 }];
+  assert.equal(targetScrollTop(-1, kf), 100);       // 首块前
+  assert.equal(targetScrollTop(0, kf), 100);
+  assert.equal(targetScrollTop(3000, kf), 250);     // 区间线性中点
+  assert.equal(targetScrollTop(13000, kf), 650);
+  assert.equal(targetScrollTop(99999, kf), 900);    // 末块后保持
+  assert.equal(targetScrollTop(500, []), null);     // 无关键帧
+  assert.equal(targetScrollTop(6000, [{ t: 6000, y: 1 }, { t: 6000, y: 2 }]), 2); // 同刻
 });
 
 test("SyncClock 计时/暂停/±5s/锚定", () => {

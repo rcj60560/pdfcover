@@ -51,6 +51,21 @@ export function isEnded(blocks, ms) {
   return blocks.length > 0 && ms >= blocks[blocks.length - 1].endMs;
 }
 
+export function targetScrollTop(ms, keyframes) {   // 连续滚动：按时间在关键帧间插值
+  if (!keyframes.length) return null;              // keyframes: [{t, y}]，t 升序
+  if (ms < keyframes[0].t) return keyframes[0].y;
+  const last = keyframes[keyframes.length - 1];
+  if (ms >= last.t) return last.y;
+  let lo = 0, hi = keyframes.length - 1;
+  while (hi - lo > 1) {                            // 二分找插值区间
+    const mid = (lo + hi) >> 1;
+    if (keyframes[mid].t <= ms) lo = mid; else hi = mid;
+  }
+  const a = keyframes[lo], b = keyframes[hi];
+  if (b.t <= a.t) return b.y;                      // 同刻关键帧：取后者
+  return a.y + (b.y - a.y) * ((ms - a.t) / (b.t - a.t));
+}
+
 export class SyncClock {
   constructor(now = () => performance.now()) {
     this._now = now;
