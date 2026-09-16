@@ -1,7 +1,7 @@
 // subtitle-viewer/app.js —— 副作用层：fetch / DOM / 计时 / 滚动。逻辑全在 core.js。
 import {
   esc, parseSubtitleMd, currentBlockIndex, isEnded, SyncClock, formatMs,
-  renderBlock, groupManifest, groupBooks, plainText, renderPlain, targetScrollTop,
+  renderBlock, groupBooks, plainText, renderPlain, targetScrollTop,
 } from "./core.js?v=8";
 
 const $ = (sel) => document.querySelector(sel);
