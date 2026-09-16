@@ -4,7 +4,7 @@ import {
   parseTs, parseSubtitleMd, currentBlockIndex, isEnded, SyncClock, formatMs,
   targetScrollTop,
 } from "./core.js";
-import { renderBlock, groupManifest, plainText, renderPlain } from "./core.js";
+import { renderBlock, groupManifest, groupBooks, plainText, renderPlain } from "./core.js";
 
 const MD = [
   "# 标题",
@@ -151,4 +151,17 @@ test("groupManifest 按目录分组", () => {
   // 空串目录（根目录）排序在最前，显示名替换为「字幕」
   assert.deepEqual(groups.map((g) => g.dir), ["字幕", "collins", "in-use"]);
   assert.equal(groups[0].items.length, 1);
+});
+
+test("groupBooks 按书聚合数量与时长,根目录归其他", () => {
+  const books = groupBooks([
+    { path: "in-use/Unit 1.md", title: "Unit 1", count: 3, duration: 20 },
+    { path: "in-use/Unit 2.md", title: "Unit 2", count: 2, duration: 14 },
+    { path: "root.md", title: "root", count: 1, duration: 6 },
+  ]);
+  assert.deepEqual(
+    books.map((b) => [b.dir, b.count, b.duration]),
+    [["其他", 1, 6], ["in-use", 5, 34]],
+  );
+  assert.deepEqual(groupBooks([]), []);
 });

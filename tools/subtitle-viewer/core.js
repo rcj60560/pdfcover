@@ -158,3 +158,17 @@ export function groupManifest(docs) {
     .sort((a, b) => a[0].localeCompare(b[0], "zh-CN"))
     .map(([dir, items]) => ({ dir: dir || "字幕", items }));
 }
+
+export function groupBooks(docs) {              // 一级书目:按目录聚合篇数与总时长
+  const map = new Map();
+  for (const d of docs) {
+    const dir = d.path.includes("/") ? d.path.slice(0, d.path.lastIndexOf("/")) : "";
+    if (!map.has(dir)) map.set(dir, { dir, count: 0, duration: 0 });
+    const b = map.get(dir);
+    b.count += d.count;
+    b.duration += d.duration;
+  }
+  return [...map.values()]
+    .sort((a, b) => a.dir.localeCompare(b.dir, "zh-CN"))
+    .map((b) => ({ ...b, dir: b.dir || "其他" }));
+}
