@@ -1,8 +1,8 @@
 // subtitle-viewer/app.js —— 副作用层：fetch / DOM / 计时 / 滚动。逻辑全在 core.js。
 import {
   esc, parseSubtitleMd, currentBlockIndex, isEnded, SyncClock, formatMs,
-  renderBlock, groupManifest, plainText, renderPlain, targetScrollTop,
-} from "./core.js?v=7";
+  renderBlock, groupManifest, groupBooks, plainText, renderPlain, targetScrollTop,
+} from "./core.js?v=8";
 
 const $ = (sel) => document.querySelector(sel);
 
@@ -26,23 +26,44 @@ async function loadManifest() {
     const res = await fetch("manifest.json", { cache: "no-store" });   // 列表必须拿最新（浏览器启发式缓存会赖着旧 manifest）
     if (res.ok) manifest = await res.json();
   } catch { /* 网络失败 → 空列表提示 */ }
-  renderList(manifest.docs || []);
+  const docs = manifest.docs || [];
+  const book = new URLSearchParams(location.search).get("book");
+  if (book) renderUnits(docs, book);
+  else renderBooks(docs);
 }
 
-function renderList(docs) {
-  if (!docs.length) {
+function gridCard(href, title, meta) {
+  return `<a class="card" href="${href}">` +
+    `<span class="card-title">${esc(title)}</span>` +
+    `<span class="card-meta">${meta}</span></a>`;
+}
+
+function renderBooks(docs) {
+  const books = groupBooks(docs);
+  $("#app-title").textContent = "字幕跟读器";
+  if (!books.length) {
     $("#list").innerHTML =
       `<p class="empty">还没有字幕。先在电脑上跑 <code>python sync_subtitles.py</code> 上传。</p>`;
     return;
   }
-  $("#list").innerHTML = groupManifest(docs).map((g) =>
-    `<h2 class="group">${esc(g.dir)}</h2><ul class="docs">` +
-    g.items.map((d) =>
-      `<li><a class="doc" href="?doc=${encodeURIComponent(d.path)}">` +
-      `<span class="doc-title">${esc(d.title)}</span>` +
-      `<span class="doc-meta">${d.count} 条 · ${formatMs(d.duration * 1000)}</span>` +
-      `</a></li>`).join("") +
-    `</ul>`).join("");
+  $("#list").innerHTML = `<div class="grid">` + books.map((b) =>
+    gridCard(location.pathname + "?book=" + encodeURIComponent(b.dir),
+      b.dir, `${b.count} 篇 · ${formatMs(b.duration * 1000)}`)).join("") + `</div>`;
+}
+
+function renderUnits(docs, book) {
+  const items = docs.filter((d) =>
+    d.path.startsWith(book + "/") ||
+    (book === "其他" && !d.path.includes("/")));
+  const title = items.length ? book : "没有这本书";
+  $("#app-title").textContent = title;
+  $("#back").hidden = false;
+  $("#back").textContent = "‹ 书库";
+  $("#list").innerHTML = items.length
+    ? `<div class="grid">` + items.map((d) =>
+        gridCard(location.pathname + "?doc=" + encodeURIComponent(d.path),
+          d.title, `${d.count} 条 · ${formatMs(d.duration * 1000)}`)).join("") + `</div>`
+    : `<p class="empty">这本书还没有字幕。</p>`;
 }
 
 /* ---------- 字幕视图 ---------- */
