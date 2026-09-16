@@ -2,7 +2,7 @@
 import {
   esc, parseSubtitleMd, currentBlockIndex, isEnded, SyncClock, formatMs,
   renderBlock, groupManifest, plainText, renderPlain, targetScrollTop,
-} from "./core.js?v=6";
+} from "./core.js?v=7";
 
 const $ = (sel) => document.querySelector(sel);
 
@@ -23,7 +23,7 @@ const state = {
 async function loadManifest() {
   let manifest = { docs: [] };
   try {
-    const res = await fetch("manifest.json");
+    const res = await fetch("manifest.json", { cache: "no-store" });   // 列表必须拿最新（浏览器启发式缓存会赖着旧 manifest）
     if (res.ok) manifest = await res.json();
   } catch { /* 网络失败 → 空列表提示 */ }
   renderList(manifest.docs || []);
