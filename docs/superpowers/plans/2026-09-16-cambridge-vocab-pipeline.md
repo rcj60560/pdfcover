@@ -13,7 +13,7 @@
 ## Global Constraints
 
 - 源数据路径(含空格/中文,shell 中必须加引号):
-  - OCR PDF:`D:/夸克下载/剑桥雅思核心词汇精讲精练/OCR_p163-180.pdf`(18 页,有文本层)
+  - OCR PDF(全本,已验证):`D:/夸克下载/剑桥雅思核心词汇精讲精练/剑桥雅思核心词汇精讲精练_OCR.pdf`(180 页全文本层;脚本区 163–172 页,共 43 条录音 1a–22b,16/18/21 单元无录音)
   - 源扫描 PDF(补 OCR 用):`D:/夸克下载/剑桥雅思核心词汇精讲精练/剑桥雅思核心词汇精讲精练 (Pdg2Pic, （英）Pauline Cullen编著；何钢译) (z-library.sk, 1lib.sk, z-lib.sk).pdf`(182 页,无文本层)
   - 音频目录:`D:/夸克下载/剑桥雅思核心词汇精讲精练/剑桥雅思核心词汇精讲精练  音频/Track01.mp3 … Track49.mp3`
   - 精翻稿:`D:/夸克下载/剑桥雅思核心词汇精讲精练/录音脚本_Recording1a-2b_中英对照.md`
@@ -146,11 +146,11 @@ Expected: 3 passed
 PYTHONIOENCODING=utf-8 python -c "
 import sys; sys.path.insert(0, 'tools/subtitle-viewer')
 from cambridge.extract import extract_from_pdf
-recs = extract_from_pdf(r'D:/夸克下载/剑桥雅思核心词汇精讲精练/OCR_p163-180.pdf')
+recs = extract_from_pdf(r'D:/夸克下载/剑桥雅思核心词汇精讲精练/剑桥雅思核心词汇精讲精练_OCR.pdf')
 print('recordings:', len(recs), '| ids:', ' '.join(r['id'] for r in recs))
 "
 ```
-记录:总录音数、id 列表、最后一条 id(判断 22b 之后是否被 OCR 覆盖)。若 22b 之后缺录音 → 用 pdf-ocr 工具对源 PDF 对应页补跑(手动,列为阻塞项上报)。
+预期:43 条,1a–22b,缺 16/18/21(书本身无)。若解析数明显少 → 检查 TURN_RE/REC_RE 对真实文本的适配,修正后重跑(此为提取器调参的验收步)。
 
 - [ ] **Step 6: Commit**
 
@@ -518,7 +518,7 @@ from cambridge.build_md import build_md
 from cambridge.extract import extract_from_pdf
 from cambridge.transcribe import transcribe_all
 
-OCR_PDF = r"D:/夸克下载/剑桥雅思核心词汇精讲精练/OCR_p163-180.pdf"
+OCR_PDF = r"D:/夸克下载/剑桥雅思核心词汇精讲精练/剑桥雅思核心词汇精讲精练_OCR.pdf"
 AUDIO_DIR = r"D:/夸克下载/剑桥雅思核心词汇精讲精练/剑桥雅思核心词汇精讲精练  音频"
 CACHE = HERE.parents[2] / "tmp" / "cambridge_cache"
 DEFAULT_OUT = Path(r"D:/Users/luocj/Ahuaxi/hcrs_devdocs/ielts/剑桥雅思核心词汇精讲精练")
