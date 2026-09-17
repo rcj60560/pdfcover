@@ -72,3 +72,59 @@ def test_parse_scripts_no_colon_and_credits():
     assert recs[2]["turns"] == [{"label": "Speaker A", "text": "Hello there."}]
     assert recs[3]["turns"] == [{"label": "",
         "text": "A man and a woman are talking about weather. They will discuss the family."}]
+
+
+def test_words_of_normalizes_unicode_punctuation():
+    from cambridge.align import words_of
+    assert words_of("I can't – STOP!") == ["i", "can't", "stop"]
+
+
+def test_align_turns_matches_and_interpolates_unmatched_run():
+    from cambridge.align import align_turns
+
+    turns = [
+        {"label": "A", "text": "alpha"},
+        {"label": "B", "text": "bravo charlie"},
+        {"label": "C", "text": "delta echo foxtrot"},
+        {"label": "D", "text": "omega"},
+    ]
+    words = [
+        {"w": "alpha", "s": 1.0, "e": 2.0},
+        {"w": "omega", "s": 10.0, "e": 11.0},
+    ]
+
+    out = align_turns(turns, words)
+    assert (out[0]["start"], out[0]["end"], out[0]["conf"]) == (1.0, 2.0, 1.0)
+    assert (out[1]["start"], out[1]["end"], out[1]["conf"]) == (2.0, 5.2, 0.0)
+    assert (out[2]["start"], out[2]["end"], out[2]["conf"]) == (5.2, 10.0, 0.0)
+    assert (out[3]["start"], out[3]["end"], out[3]["conf"]) == (10.0, 11.0, 1.0)
+
+
+def test_align_turns_whole_track_interpolation_and_empty_audio():
+    from cambridge.align import align_turns
+
+    turns = [
+        {"label": "A", "text": "one"},
+        {"label": "B", "text": "two three"},
+    ]
+    out = align_turns(turns, [
+        {"w": "unrelated", "s": 2.0, "e": 5.0},
+    ])
+    assert (out[0]["start"], out[0]["end"]) == (0.0, 5 / 3)
+    assert (out[1]["start"], out[1]["end"]) == (5 / 3, 5.0)
+    assert all(item["conf"] == 0.0 for item in out)
+
+    empty = align_turns(turns, [])
+    assert all(item["start"] == item["end"] == 0.0 for item in empty)
+
+
+def test_match_tracks_accepts_similarity_at_threshold():
+    from cambridge.align import match_tracks
+
+    recordings = [{"id": "r", "turns": [{"label": "", "text": "one two"}]}]
+    tracks = {"Track.mp3": [{"w": word, "s": i, "e": i + 1}
+                            for i, word in enumerate("one three".split())]}
+    mapping, no_recording, no_track = match_tracks(recordings, tracks)
+    assert mapping == {"r": "Track.mp3"}
+    assert no_recording == []
+    assert no_track == []
