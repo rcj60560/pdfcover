@@ -128,3 +128,28 @@ def test_match_tracks_accepts_similarity_at_threshold():
     assert mapping == {"r": "Track.mp3"}
     assert no_recording == []
     assert no_track == []
+
+
+def test_fmt_ts():
+    from cambridge.build_md import fmt_ts
+
+    assert fmt_ts(83.4) == "1:23"
+    assert fmt_ts(3723) == "1:02:03"
+
+
+def test_build_md_formats_turns_with_timestamps_and_translation():
+    from cambridge.build_md import build_md
+    from subtitle_lib import has_timestamps
+
+    turns = [
+        {"label": "Speaker A", "text": "Hello world.", "start": 0.0, "end": 2.0, "conf": 1.0},
+        {"label": "Speaker B", "text": "Good night.", "start": 5.0, "end": 6.0, "conf": 1.0},
+    ]
+    md = build_md("1a", "1 Family", turns, "Track01.mp3", {0: "你好,世界。", 1: "晚安。"})
+
+    assert has_timestamps(md)
+    assert "`0:00 → 0:05`" in md
+    assert "`0:05 → 0:06`" in md
+    assert "**Speaker A: Hello world.**" in md
+    assert "你好,世界。" in md
+    assert "Track01.mp3" in md
