@@ -22,6 +22,22 @@ def test_clean_line():
     assert clean_line("small! and fun") == "small! and fun"   # 紧贴单词的 ! 不是 I
     assert clean_line("abie   able") == "abie able"
 
+
+def test_clean_line_strips_page_header_residue():
+    from cambridge.extract import clean_line
+    # 1c turn22 场景:页边界把「157 Recording scripts」粘进 turn 文本
+    assert clean_line("Yes, that does make more sense! 157 Recording scripts") == \
+        "Yes, that does make more sense!"
+    assert clean_line("Yes, that does make more sense!\n157\n\nRecording scripts\n") == \
+        "Yes, that does make more sense!"
+    # 页码被 OCR 误读(如「eg」)时只剩裸页眉,也要剥掉
+    assert clean_line("studies. eg Recording scripts") == "studies. eg"
+    # 首尾裸页码 token 剥除;四位数年份不受牵连
+    assert clean_line("157 turn text 158") == "turn text"
+    assert clean_line("2010 was a year") == "2010 was a year"
+    # 纯页码保持原样(剩余为空不剥),由上层空文本判断丢弃
+    assert clean_line("157") == "157"
+
 def test_parse_scripts():
     from cambridge.extract import parse_scripts
     recs = parse_scripts(PAGES)
@@ -172,6 +188,62 @@ def test_inject_missing_headings_raises_when_marker_count_differs():
         inject_missing_headings(absent)
 
 
+MIDLINE_HEADING_PAGES = [
+    # 15b 词表行中粘着无字母标题「Recording 16」(REC_RE 切不开)
+    "Recording 15b\n"
+    "recycle, reusable, rubbish, solar, warmer Recording 16\n"
+    "Let's find out just how environmentally aware you are.\n",
+    # 17b 词表行中粘着「Recording 18」
+    "Recording 17b\n"
+    "bird, earn, first, nurse, perk, purse, work Recording 18\n"
+    "In spite of the large number of prisons we have, crime figures have risen.\n",
+    # 20c 词表行中粘着「Recording 21」,21 词表接在标题同一行
+    "Recording 20c\n"
+    "atmosphere, classical, edition, festival, fundamental, imagination,\n"
+    "literary, monotonous, musical Recording 21 put, these, in, some, ball,\n"
+    "choose, word, about, guest, what, attack, hard\n",
+    "Recording 22a\n"
+    "Speaker A: Hello.\n",
+]
+
+
+def test_split_midline_headings_separates_letterless_recording():
+    from cambridge.extract import parse_scripts, split_midline_headings
+
+    recs = parse_scripts(split_midline_headings(MIDLINE_HEADING_PAGES))
+    assert [r["id"] for r in recs] == ["15b", "16", "17b", "18", "20c", "21", "22a"]
+    # 15b 词表止于行中标题前,不再吸入 16 全文
+    assert recs[0]["turns"] == [{"label": "",
+        "text": "recycle, reusable, rubbish, solar, warmer"}]
+    assert recs[1]["turns"] == [{"label": "",
+        "text": "Let's find out just how environmentally aware you are."}]
+    assert recs[3]["turns"] == [{"label": "",
+        "text": "In spite of the large number of prisons we have, crime figures "
+                "have risen."}]
+    # 20c 词表止于行中标题前,不再吸入 21 全文
+    assert recs[4]["turns"] == [{"label": "",
+        "text": "atmosphere, classical, edition, festival, fundamental, imagination, "
+                "literary, monotonous, musical"}]
+    # 21 独立成条、词表完整
+    assert recs[5]["turns"] == [{"label": "",
+        "text": "put, these, in, some, ball, choose, word, about, guest, what, "
+                "attack, hard"}]
+    assert recs[6]["turns"] == [{"label": "Speaker A", "text": "Hello."}]
+
+
+def test_split_midline_headings_raises_when_marker_count_differs():
+    import pytest
+    from cambridge.extract import split_midline_headings
+
+    duplicated = ["Recording 21 once and Recording 21 twice.\n"]  # 重复
+    with pytest.raises(ValueError):
+        split_midline_headings(duplicated)
+
+    absent = ["Recording 1a\nSpeaker A: Nothing to see.\n"]  # 换书:标志缺失
+    with pytest.raises(ValueError):
+        split_midline_headings(absent)
+
+
 def test_match_tracks_accepts_similarity_at_threshold():
     from cambridge.align import match_tracks
 
@@ -201,6 +273,31 @@ def test_match_tracks_skips_unspoken_leading_instructions():
     assert mapping == {"4b": "Track12.mp3"}
     assert no_recording == []
     assert no_track == []
+
+
+def test_match_tracks_truncates_track_head_to_script_head_length():
+    """10c 场景:脚本前 2 turn 仅 18 词,Track 头 60 词;等长截断后才配得上。
+
+    不截断时最佳相似度 2*18/78 ≈ 0.46 < 0.5,系统性吃亏。
+    """
+    from cambridge.align import match_tracks
+
+    head = ("you will hear a man and a woman talking about how to use "
+            "the big online school library").split()
+    assert len(head) == 18
+    tail = [f"later{i}" for i in range(42)]           # Track 头后续 42 词
+    recordings = [{"id": "10c", "turns": [
+        {"label": "Narrator", "text": " ".join(head[:8])},
+        {"label": "Tutor", "text": " ".join(head[8:])},
+    ]}]
+    tracks = {
+        "Track26.mp3": [{"w": w, "s": i, "e": i + 1} for i, w in enumerate(head + tail)],
+        "Track99.mp3": [{"w": w, "s": i, "e": i + 1} for i, w in enumerate(tail)],
+    }
+    mapping, no_recording, no_track = match_tracks(recordings, tracks)
+    assert mapping == {"10c": "Track26.mp3"}
+    assert no_recording == []
+    assert no_track == ["Track99.mp3"]
 
 
 def test_fmt_ts():

@@ -26,13 +26,22 @@ def _sim(left: list[str], right: list[str]) -> float:
 # 录音开头可能含音频里未朗读的练习指令(如 4b 前 26 词),对录音头做
 # 有界前缀偏移:依次跳过 0..HEAD_OFFSET_LIMIT 词再与 Track 头比较。
 HEAD_OFFSET_LIMIT = 30
+# 头长感知:Track 头先截到录音头长 + 此余量再比较。否则短脚本头
+# (如 10c 前 2 turn 仅 18 词)对阵 60 词 Track 头,最佳相似度天然
+# 被拉低到 2*18/78 ≈ 0.46,永远过不了 0.5 阈值。
+HEAD_LENGTH_MARGIN = 5
 
 
 def _head_similarity(recording_words: list[str], track_words: list[str]) -> float:
-    """Best similarity over bounded prefix offsets of the recording head."""
+    """Best similarity over bounded prefix offsets of the recording head.
+
+    The track head is truncated to the recording head length (+ margin) so
+    short script heads are not penalised by trailing track-only words.
+    """
     best = 0.0
     for offset in range(min(HEAD_OFFSET_LIMIT, len(recording_words)) + 1):
-        best = max(best, _sim(recording_words[offset:], track_words))
+        head = recording_words[offset:]
+        best = max(best, _sim(head, track_words[:len(head) + HEAD_LENGTH_MARGIN]))
     return best
 
 
