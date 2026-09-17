@@ -10,7 +10,7 @@ HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE.parent))          # tools/subtitle-viewer → import cambridge.*
 
 from cambridge.align import align_turns, match_tracks
-from cambridge.build_md import build_md
+from cambridge.build_md import build_md, md_filename
 from cambridge.extract import extract_from_pdf
 from cambridge.transcribe import transcribe_all
 
@@ -18,6 +18,8 @@ OCR_PDF = r"D:/夸克下载/剑桥雅思核心词汇精讲精练/剑桥雅思核
 AUDIO_DIR = r"D:/夸克下载/剑桥雅思核心词汇精讲精练/剑桥雅思核心词汇精讲精练  音频"
 CACHE = HERE.parents[2] / "tmp" / "cambridge_cache"
 DEFAULT_OUT = Path(r"D:/Users/luocj/Ahuaxi/hcrs_devdocs/ielts/剑桥雅思核心词汇精讲精练")
+# 1a–2b 为用户精翻稿,其余为 LLM 翻译;md 头部来源标签据此如实标注
+USER_TRANSLATED = {"1a", "1b", "1c", "2a", "2b"}
 
 
 def load_json(path: Path, producer):
@@ -60,9 +62,10 @@ def main() -> None:
         report.append(f"{rid} → {mapping[rid]}: {len(aligned)} 段, 低置信 {low}, 中文 {len(zh)}/{len(aligned)}")
         if args.dry:
             continue
-        md = build_md(rid, unit, aligned, mapping[rid], zh)
+        md = build_md(rid, unit, aligned, mapping[rid], zh,
+                      "精翻" if rid in USER_TRANSLATED else "LLM 翻译")
         args.out.mkdir(parents=True, exist_ok=True)
-        (args.out / f"Recording {rid}｜Unit {unit}.md").write_text(md, encoding="utf-8")
+        (args.out / md_filename(rid, unit)).write_text(md, encoding="utf-8")
 
     print("\n".join(report) or "无录音")
     print("未匹配录音:", " ".join(no_rec) or "-", "| 未匹配 Track:", " ".join(no_track) or "-")

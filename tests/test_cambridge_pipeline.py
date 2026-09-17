@@ -32,9 +32,15 @@ def test_clean_line_strips_page_header_residue():
         "Yes, that does make more sense!"
     # 页码被 OCR 误读(如「eg」)时只剩裸页眉,也要剥掉
     assert clean_line("studies. eg Recording scripts") == "studies. eg"
-    # 首尾裸页码 token 剥除;四位数年份不受牵连
-    assert clean_line("157 turn text 158") == "turn text"
+    # 首部裸页码剥除;四位数年份不受牵连
+    assert clean_line("157 turn text") == "turn text"
     assert clean_line("2010 was a year") == "2010 was a year"
+    # 尾部裸页码:仅当前邻是句末标点/逗号(句子、词表结尾语境)才剥
+    assert clean_line("turn text. 158") == "turn text."
+    assert clean_line("words, 164") == "words,"
+    # 词+空格+数字(15a 题号 “Statement 1”)不剥;结尾四位数不拦腰截尾
+    assert clean_line("Statement 1") == "Statement 1"
+    assert clean_line("since 2010") == "since 2010"
     # 纯页码保持原样(剩余为空不剥),由上层空文本判断丢弃
     assert clean_line("157") == "157"
 
@@ -247,6 +253,57 @@ def test_split_midline_headings_raises_when_marker_count_differs():
         split_midline_headings(absent)
 
 
+def _ocr_noise_pages(co2_line: str = "A kilo of CO» is added. More CO» here. "
+                                      "A third CO» too.") -> list[str]:
+    """覆盖 TEXT_OVERRIDES 涉及的全部录音的最小页面组(乱码串与底本同形)。"""
+    return [
+        # 15b 词表尾乱码串(含换行)
+        "Recording 15b\n"
+        "Temperatures are expected to increase. :\neo onronorh@®bhb =\nwack\n",
+        # 6a 独白尾的页脚页码残迹
+        "Recording 6a\n"
+        "You get a job, or just buy the things you need.\n160\nP\\E\\ 18\n",
+        # 16 的 CO» 是 CO₂ 误读
+        f"Recording 16\n{co2_line}\n",
+        # 22a 词表尾乱码串(页脚页码区整段)
+        "Recording 22a\n"
+        "theory, theorise, theoretical\neo onoaoh@Q hb =\noh\n166\nP\\e\\ 18\n",
+        "Recording 17a\n"
+        "Speaker A: Untouched by overrides.\n",
+    ]
+
+
+def test_apply_text_overrides_cleans_noise_per_recording():
+    from cambridge.extract import apply_text_overrides, parse_scripts
+
+    recs = parse_scripts(apply_text_overrides(_ocr_noise_pages()))
+    assert [r["id"] for r in recs] == ["15b", "6a", "16", "22a", "17a"]
+    # 15b/22a 词表尾与 6a 独白尾的乱码整段消失,止于原文末词
+    assert recs[0]["turns"] == [{"label": "",
+        "text": "Temperatures are expected to increase."}]
+    assert recs[1]["turns"] == [{"label": "",
+        "text": "You get a job, or just buy the things you need."}]
+    assert recs[3]["turns"] == [{"label": "",
+        "text": "theory, theorise, theoretical"}]
+    # CO» 全部定点替换为 CO₂
+    assert recs[2]["turns"] == [{"label": "",
+        "text": "A kilo of CO₂ is added. More CO₂ here. A third CO₂ too."}]
+    # 不在覆盖表中的录音原文不动
+    assert recs[4]["turns"] == [{"label": "Speaker A",
+                                 "text": "Untouched by overrides."}]
+
+
+def test_apply_text_overrides_raises_when_count_differs():
+    import pytest
+    from cambridge.extract import apply_text_overrides
+
+    with pytest.raises(ValueError):      # 15b 乱码串缺失(换书)
+        apply_text_overrides(["Recording 15b\nAll clean now.\n"])
+    with pytest.raises(ValueError):      # CO» 出现 2 次 ≠ 期望 3
+        apply_text_overrides(
+            _ocr_noise_pages("Only CO» once and CO» twice."))
+
+
 def test_match_tracks_accepts_similarity_at_threshold():
     from cambridge.align import match_tracks
 
@@ -328,6 +385,18 @@ def test_build_md_formats_turns_with_timestamps_and_translation():
     assert "**Speaker A: Hello world.**" in md
     assert "你好,世界。" in md
     assert "Track01.mp3" in md
+
+    # zh_source 标注翻译来源(3a 起 LLM 翻译,头部不再统一写「精翻」)
+    llm_md = build_md("3a", "3 Keeping fit", turns, "Track03.mp3", {},
+                      zh_source="LLM 翻译")
+    assert "中文 `LLM 翻译`" in llm_md
+    assert "精翻" not in llm_md
+
+
+def test_run_user_translated_is_1a_to_2b():
+    from cambridge.run import USER_TRANSLATED
+
+    assert USER_TRANSLATED == {"1a", "1b", "1c", "2a", "2b"}
 
 
 def test_md_filename_uses_fullwidth_separator():

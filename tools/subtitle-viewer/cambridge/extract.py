@@ -33,6 +33,18 @@ MISSING_HEADINGS = [
 # 切不开(如 20c 词表行中的「Recording 21」),预处理在其前强制换行。
 # 标志全文出现次数必须恰好 1,否则换书时抛错。
 MIDLINE_HEADINGS = ["Recording 16", "Recording 18", "Recording 21"]
+# OCR 噪声定点覆盖:(rec_id, 原样噪声串, 替换串, 期望出现次数)。原样串取自
+# 底本 OCR 原文(含换行),只作用于对应录音的正文范围;出现次数必须与期望
+# 完全一致,否则换书时抛 ValueError,绝不静默放过或误伤其他录音。
+# 词表/独白尾部的乱码串是页脚页码区的误读,整串删除;6a 尾部页脚残迹
+# 「160 P\E\ 18」同理(旧版尾部页码剥除恰好削掉 “ 18”,收窄规则后完整
+# 暴露,索性整段清除);CO» 是 CO₂(下标 2)的 OCR 误读。
+TEXT_OVERRIDES = [
+    ("15b", " :\neo onronorh@®bhb =\nwack", "", 1),
+    ("22a", "\neo onoaoh@Q hb =\noh\n166\nP\\e\\ 18", "", 1),
+    ("6a", "\n160\nP\\E\\ 18", "", 1),
+    ("16", "CO»", "CO₂", 3),
+]
 
 
 def _normalize_chars(s: str) -> str:
@@ -53,11 +65,13 @@ def clean_line(s: str) -> str:
     s = re.sub(r"\bRecording scripts\b", " ", s)  # 页码被 OCR 误读(如「eg」)的裸页眉
     s = re.sub(r"\s+", " ", s)
     # 首尾裸页码 token:仅当剩余非空才剥(纯页码行保持原样,由空文本判断丢弃);
-    # (?!\d) 防止把 2010 这类四位数拦腰截断
+    # (?!\d)/(?<!\d) 防止把 2010 这类四位数拦腰截断
     lead = re.sub(r"^\d{1,3}(?!\d)\s*", "", s)
     if lead:
         s = lead
-    tail = re.sub(r"\s*\d{1,3}$", "", s)
+    # 尾部裸页码还要求数字前紧邻句末标点或逗号(句子/词表结尾跨页粘页码的语境),
+    # 否则 “Statement 1” 这类词+空格+数字组合(15a 题号)会被误吃
+    tail = re.sub(r"(?<=[.,;:!?])\s*(?<!\d)\d{1,3}$", "", s)
     if tail:
         s = tail
     return s.strip()
@@ -156,7 +170,44 @@ def split_midline_headings(pages_text: list[str]) -> list[str]:
     return text.split("\n")
 
 
+def _recording_body_span(text: str, recording_id: str) -> tuple[int, int] | None:
+    """Return the (start, end) char span of one recording's body, or None."""
+    marks = [(m.start(), m.group(1).lower()) for m in REC_RE.finditer(text)]
+    for i, (pos, rid) in enumerate(marks):
+        if rid != recording_id:
+            continue
+        end = marks[i + 1][0] if i + 1 < len(marks) else len(text)
+        nl = text.find("\n", pos, end)
+        return (nl + 1 if nl != -1 else end, end)
+    return None
+
+
+def apply_text_overrides(pages_text: list[str]) -> list[str]:
+    """按 TEXT_OVERRIDES 对指定录音正文做定点噪声清理,返回新页文本。
+
+    每条覆盖的噪声串必须在其录音正文范围内恰好出现 ``expected`` 次
+    (0 次或次数变动都说明底本变了),否则 ValueError,绝不静默放过。
+    """
+    text = "\n".join(pages_text)
+    for recording_id, old, new, expected in TEXT_OVERRIDES:
+        span = _recording_body_span(text, recording_id)
+        if span is None:
+            raise ValueError(
+                f"text override for Recording {recording_id}: recording not found"
+            )
+        start, end = span
+        found = text.count(old, start, end)
+        if found != expected:
+            raise ValueError(
+                f"text override {old!r} for Recording {recording_id} appears "
+                f"{found} times (expected exactly {expected})"
+            )
+        text = text[:start] + text[start:end].replace(old, new) + text[end:]
+    return text.split("\n")
+
+
 def extract_from_pdf(pdf_path: str) -> list[dict]:
     reader = PdfReader(str(pdf_path), strict=False)
     pages = [(p.extract_text() or "") for p in reader.pages]
-    return parse_scripts(split_midline_headings(inject_missing_headings(pages)))
+    return parse_scripts(apply_text_overrides(
+        split_midline_headings(inject_missing_headings(pages))))
