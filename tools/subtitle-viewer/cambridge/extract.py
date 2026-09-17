@@ -24,7 +24,9 @@ CREDITS_LABELS = {
 # (rec_id, 正文起点标志) —— 标志必须在全文恰好出现一次,否则换书时抛错,
 # 防止静默错切。
 MISSING_HEADINGS = [
-    ("6a", "French teacher, but"),
+    # 6a 必须用含撇号全串:截短的 "French teacher, but" 会把 “I'm a ” 残留在
+    # 5c 词表 turn 尾部、6a 首 turn 缺开头。底本撇号为 ASCII '(U+2019 计 0 次)。
+    ("6a", "I'm a French teacher, but"),
     ("8b", "Welcome once again to"),
 ]
 # 无字母后缀的录音标题:OCR 文本层可能粘在上一条词表行中,REC_RE 按行

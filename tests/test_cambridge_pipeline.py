@@ -157,14 +157,16 @@ def test_inject_missing_headings_splits_merged_recordings():
 
     recs = parse_scripts(inject_missing_headings(MERGED_HEADING_PAGES))
     assert [r["id"] for r in recs] == ["5c", "6a", "6b", "8a", "8b", "9a"]
-    # 5c 词表独立成条,不再吸入 6a 独白
+    # 5c 词表独立成条,不再吸入 6a 独白,尾部无 “I'm a” 残留
     assert recs[0]["turns"] == [{"label": "",
         "text": "academic, assignment, controversy, research (n), thesis, "
-                "theory, theoretical I'm a"}]
-    # 6a 独白内容完整
+                "theory, theoretical"}]
+    assert "I'm a" not in recs[0]["turns"][-1]["text"]
+    # 6a 独白内容完整,首 turn 以撇号全串开头
+    assert recs[1]["turns"][0]["text"].startswith("I'm a French teacher")
     assert recs[1]["turns"] == [{"label": "",
-        "text": "French teacher, but I remember when I first started to learn "
-                "the language I really struggled with it."}]
+        "text": "I'm a French teacher, but I remember when I first started to "
+                "learn the language I really struggled with it."}]
     # 8a 说话人段落止于原句末
     assert recs[3]["turns"] == [{"label": "Speaker 3",
         "text": "I own about 12 watches and clocks, but none of them show the right time."}]
@@ -179,7 +181,8 @@ def test_inject_missing_headings_raises_when_marker_count_differs():
     from cambridge.extract import inject_missing_headings
 
     duplicated = ["Recording 5c\n"
-                  "The French teacher, but meets another French teacher, but here.\n"]
+                  "He said I'm a French teacher, but she met another I'm a "
+                  "French teacher, but here.\n"]
     with pytest.raises(ValueError):
         inject_missing_headings(duplicated)
 
