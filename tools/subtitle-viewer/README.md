@@ -20,6 +20,23 @@ python sync_subtitles.py [--src 目录] [--dry-run]
 块间 `---` 分隔；每块：`00:00:08 → 00:00:14`（反引号）+ `**英文**` + 中文段落。
 无时间戳的 md 降级为静态阅读模式。
 
+## 剑桥雅思词汇管线（cambridge/）
+《剑桥雅思核心词汇精讲精练》书后 Recording scripts → 时间轴双语字幕：
+OCR 提取 → faster-whisper 词级转写 → difflib 词序对齐 → 人工/LLM 翻译 → 生成 md。
+
+```bash
+cd tools/subtitle-viewer
+python -m cambridge.run --dry          # 只出映射/置信报告
+python -m cambridge.run --only 1a      # 只生成一条
+python -m cambridge.run                # 全量（48 条 → src_root/剑桥雅思核心词汇精讲精练/）
+```
+
+- 源数据：全本 `_OCR.pdf` + 49 条 Track 音频（路径见 run.py 常量）；中间产物缓存于仓库 `tmp/cambridge_cache/`（recordings.json / Track*.words.json / match.json），可重跑。
+- 翻译：`cambridge/translations/{id}.json`，键 = turn 序号（字符串）；1a–2b 为用户精翻稿，其余为 LLM 翻译待抽查。
+- 已知数据妥协：22b 说话人 "I" 被 OCR 成 "1" 并入 H 段；词表类录音为单块长段。
+- 音频在音频站（/script/books/剑桥雅思核心词汇精讲精练/）播放，字幕页手动对时跟读。
+
 ## 测试
 node --test                       # core.js 纯逻辑
 pytest tests/test_subtitle_viewer.py
+pytest tests/test_cambridge_pipeline.py   # 剑桥管线纯逻辑
