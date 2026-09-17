@@ -17,6 +17,13 @@ CREDITS_LABELS = {
     "Concept design",
     "Illustrations",
 }
+# OCR 文本层漏检的标题(书页视觉上有):正文被并入上一条录音。
+# (rec_id, 正文起点标志) —— 标志必须在全文恰好出现一次,否则换书时抛错,
+# 防止静默错切。
+MISSING_HEADINGS = [
+    ("6a", "French teacher, but"),
+    ("8b", "Welcome once again to"),
+]
 
 
 def clean_line(s: str) -> str:
@@ -80,6 +87,26 @@ def parse_scripts(pages_text: list[str]) -> list[dict]:
     return recs
 
 
+def inject_missing_headings(pages_text: list[str]) -> list[str]:
+    """在漏检标题对应正文起点前插入 ``Recording {id}`` 行,返回新页文本。
+
+    每个标志在全文必须恰好出现一次(0 次或多次都说明底本变了),否则
+    ValueError,绝不静默错切。
+    """
+    text = "\n".join(pages_text)
+    for recording_id, marker in MISSING_HEADINGS:
+        count = text.count(marker)
+        if count != 1:
+            raise ValueError(
+                f"missing-heading marker {marker!r} for Recording {recording_id} "
+                f"appears {count} times (expected exactly 1)"
+            )
+    for recording_id, marker in MISSING_HEADINGS:
+        text = text.replace(marker, f"Recording {recording_id}\n{marker}", 1)
+    return text.split("\n")
+
+
 def extract_from_pdf(pdf_path: str) -> list[dict]:
     reader = PdfReader(str(pdf_path), strict=False)
-    return parse_scripts([(p.extract_text() or "") for p in reader.pages])
+    pages = [(p.extract_text() or "") for p in reader.pages]
+    return parse_scripts(inject_missing_headings(pages))

@@ -31,10 +31,10 @@ def build_md(
 ) -> str:
     """Render aligned turns and their translations as subtitle Markdown."""
     header = (
-        f"# 剑桥雅思核心词汇精讲精练 Recording {rec_id}—Unit {unit}\n\n"
+        f"# 剑桥雅思核心词汇精讲精练 Recording {rec_id}｜Unit {unit}\n\n"
         f"> 来源: 剑桥雅思核心词汇精讲精练 (Pauline Cullen)书后 Recording scripts · "
         f"音频 {track_name}\n"
-        f"> 时间轴: `faster-whisper small.en 词级对齐` · 中文 `机翻` · 共 {len(turns)} 条\n\n"
+        f"> 时间轴: `faster-whisper small.en 词级对齐` · 中文 `精翻` · 共 {len(turns)} 条\n\n"
         f"{STYLE}\n"
     )
 
@@ -62,4 +62,4 @@ def build_md(
 
 def md_filename(rec_id: str, unit: str) -> str:
     """Return the standard output filename for a recording and unit."""
-    return f"Recording {rec_id}—Unit {unit}.md"
+    return f"Recording {rec_id}｜Unit {unit}.md"

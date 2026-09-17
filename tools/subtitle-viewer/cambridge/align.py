@@ -23,6 +23,19 @@ def _sim(left: list[str], right: list[str]) -> float:
     return SequenceMatcher(None, left, right, autojunk=False).ratio()
 
 
+# 录音开头可能含音频里未朗读的练习指令(如 4b 前 26 词),对录音头做
+# 有界前缀偏移:依次跳过 0..HEAD_OFFSET_LIMIT 词再与 Track 头比较。
+HEAD_OFFSET_LIMIT = 30
+
+
+def _head_similarity(recording_words: list[str], track_words: list[str]) -> float:
+    """Best similarity over bounded prefix offsets of the recording head."""
+    best = 0.0
+    for offset in range(min(HEAD_OFFSET_LIMIT, len(recording_words)) + 1):
+        best = max(best, _sim(recording_words[offset:], track_words))
+    return best
+
+
 def _interpolate_run(out: list[dict], counts: list[int], first: int, last: int,
                      start: float, end: float) -> None:
     """Assign one consecutive unmatched turn run by script word counts."""
@@ -117,7 +130,7 @@ def match_tracks(recordings: list[dict], tracks: dict[str, list[dict]],
         for name, track_words in track_heads.items():
             if name in used:
                 continue
-            score = _sim(recording_words, track_words)
+            score = _head_similarity(recording_words, track_words)
             if score >= best_score:
                 best_name, best_score = name, score
         if best_name is not None:

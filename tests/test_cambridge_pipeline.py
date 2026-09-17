@@ -118,6 +118,60 @@ def test_align_turns_whole_track_interpolation_and_empty_audio():
     assert all(item["start"] == item["end"] == 0.0 for item in empty)
 
 
+MERGED_HEADING_PAGES = [
+    # p166:5c 词表结尾连排 6a 独白(OCR 文本层漏了 “Recording 6a” 标题)
+    "Recording 5c\n"
+    "academic, assignment, controversy, research (n), thesis, theory, theoretical\n"
+    "I'm a French teacher, but I remember when I first started to learn\n"
+    "the language I really struggled with it.\n",
+    "Recording 6b\n"
+    "Speaker A: Now listen again and answer questions one to five.\n",
+    # p167:8a 说话人段落连排 8b 讲座(漏了 “Recording 8b” 标题)
+    "Recording 8a\n"
+    "Speaker 3: I own about 12 watches and clocks, but none of them show the\n"
+    "right time. Welcome once again to 'Introduction to dentistry' and in\n"
+    "today's lecture we'll be looking at the history of dentistry.\n",
+    "Recording 9a\n"
+    "Speaker A: Hello there.\n",
+]
+
+
+def test_inject_missing_headings_splits_merged_recordings():
+    from cambridge.extract import inject_missing_headings, parse_scripts
+
+    recs = parse_scripts(inject_missing_headings(MERGED_HEADING_PAGES))
+    assert [r["id"] for r in recs] == ["5c", "6a", "6b", "8a", "8b", "9a"]
+    # 5c 词表独立成条,不再吸入 6a 独白
+    assert recs[0]["turns"] == [{"label": "",
+        "text": "academic, assignment, controversy, research (n), thesis, "
+                "theory, theoretical I'm a"}]
+    # 6a 独白内容完整
+    assert recs[1]["turns"] == [{"label": "",
+        "text": "French teacher, but I remember when I first started to learn "
+                "the language I really struggled with it."}]
+    # 8a 说话人段落止于原句末
+    assert recs[3]["turns"] == [{"label": "Speaker 3",
+        "text": "I own about 12 watches and clocks, but none of them show the right time."}]
+    # 8b 讲座独立成条、内容完整
+    assert recs[4]["turns"] == [{"label": "",
+        "text": "Welcome once again to 'Introduction to dentistry' and in today's "
+                "lecture we'll be looking at the history of dentistry."}]
+
+
+def test_inject_missing_headings_raises_when_marker_count_differs():
+    import pytest
+    from cambridge.extract import inject_missing_headings
+
+    duplicated = ["Recording 5c\n"
+                  "The French teacher, but meets another French teacher, but here.\n"]
+    with pytest.raises(ValueError):
+        inject_missing_headings(duplicated)
+
+    absent = ["Recording 1a\nSpeaker A: Nothing to see.\n"]  # 换书:标志缺失
+    with pytest.raises(ValueError):
+        inject_missing_headings(absent)
+
+
 def test_match_tracks_accepts_similarity_at_threshold():
     from cambridge.align import match_tracks
 
@@ -126,6 +180,25 @@ def test_match_tracks_accepts_similarity_at_threshold():
                             for i, word in enumerate("one three".split())]}
     mapping, no_recording, no_track = match_tracks(recordings, tracks)
     assert mapping == {"r": "Track.mp3"}
+    assert no_recording == []
+    assert no_track == []
+
+
+def test_match_tracks_skips_unspoken_leading_instructions():
+    """4b 场景:脚本开头 26 词指令音频里未朗读,需前缀偏移后才能对上。"""
+    from cambridge.align import match_tracks
+
+    instructions = ("You will hear a woman talking on radio about spare activities "
+                    "occupying younger minds during vacation time before beginning "
+                    "listen carefully now very good luck everyone").split()
+    real = "The school holidays are fast approaching and I'm sure all of you".split()
+    assert len(instructions) == 26 and len(real) == 12
+    recordings = [{"id": "4b", "turns": [
+        {"label": "Narrator", "text": " ".join(instructions + real)}]}]
+    tracks = {"Track12.mp3": [{"w": word, "s": i, "e": i + 1}
+                              for i, word in enumerate(real)]}
+    mapping, no_recording, no_track = match_tracks(recordings, tracks)
+    assert mapping == {"4b": "Track12.mp3"}
     assert no_recording == []
     assert no_track == []
 
@@ -150,6 +223,15 @@ def test_build_md_formats_turns_with_timestamps_and_translation():
     assert has_timestamps(md)
     assert "`0:00 → 0:05`" in md
     assert "`0:05 → 0:06`" in md
+    assert "# 剑桥雅思核心词汇精讲精练 Recording 1a｜Unit 1 Family" in md
+    assert "中文 `精翻`" in md
     assert "**Speaker A: Hello world.**" in md
     assert "你好,世界。" in md
     assert "Track01.mp3" in md
+
+
+def test_md_filename_uses_fullwidth_separator():
+    from cambridge.build_md import md_filename
+
+    assert md_filename("1a", "1 Family") == "Recording 1a｜Unit 1 Family.md"
+    assert "—" not in md_filename("22b", "22 Colour")  # 半角破折号不再用作分隔
