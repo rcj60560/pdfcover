@@ -172,3 +172,32 @@ export function groupBooks(docs) {              // 一级书目:按目录聚合�
     .sort((a, b) => a.dir.localeCompare(b.dir, "zh-CN"))
     .map((b) => ({ ...b, dir: b.dir || "其他" }));
 }
+
+export function groupUnits(docs) {               // 二级 Unit:书内条目按子目录聚合,散文件单列
+  const map = new Map();                         // docs: 已过滤到某书的条目
+  const flat = [];                               // 返回 {units:[{dir,count,duration}], flat:[docs]}
+  for (const d of docs) {
+    const rest = d.path.slice(d.path.indexOf("/") + 1);   // 去书名段
+    if (!rest.includes("/")) { flat.push(d); continue; }
+    const dir = rest.slice(0, rest.indexOf("/"));
+    if (!map.has(dir)) map.set(dir, { dir, count: 0, duration: 0 });
+    const u = map.get(dir);
+    u.count += d.count;
+    u.duration += d.duration;
+  }
+  const units = [...map.values()].sort(naturalCmp);
+  return { units, flat };
+}
+
+function naturalCmp(a, b) {                       // 自然序:'Unit 2' < 'Unit 10'
+  const split = (s) => s.split(/(\d+)/);
+  const A = split(a.dir), B = split(b.dir);
+  for (let i = 0; i < Math.max(A.length, B.length); i++) {
+    const x = A[i] ?? "", y = B[i] ?? "";
+    if (x === y) continue;
+    const nx = /^\d+$/.test(x), ny = /^\d+$/.test(y);
+    if (nx && ny) return +x - +y;
+    return x.localeCompare(y, "zh-CN");
+  }
+  return 0;
+}

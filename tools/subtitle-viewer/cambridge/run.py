@@ -64,8 +64,9 @@ def main() -> None:
             continue
         md = build_md(rid, unit, aligned, mapping[rid], zh,
                       "精翻" if rid in USER_TRANSLATED else "LLM 翻译")
-        args.out.mkdir(parents=True, exist_ok=True)
-        (args.out / md_filename(rid, unit)).write_text(md, encoding="utf-8")
+        unit_dir = args.out / f"Unit {unit}"          # 三级导航:Unit 子目录 → Recording md
+        unit_dir.mkdir(parents=True, exist_ok=True)
+        (unit_dir / md_filename(rid, unit)).write_text(md, encoding="utf-8")
 
     print("\n".join(report) or "无录音")
     print("未匹配录音:", " ".join(no_rec) or "-", "| 未匹配 Track:", " ".join(no_track) or "-")

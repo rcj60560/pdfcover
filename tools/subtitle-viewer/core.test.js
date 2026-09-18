@@ -4,7 +4,7 @@ import {
   parseTs, parseSubtitleMd, currentBlockIndex, isEnded, SyncClock, formatMs,
   targetScrollTop,
 } from "./core.js";
-import { renderBlock, groupManifest, groupBooks, plainText, renderPlain } from "./core.js";
+import { renderBlock, groupManifest, groupBooks, groupUnits, plainText, renderPlain } from "./core.js";
 
 const MD = [
   "# 标题",
@@ -140,6 +140,22 @@ test("renderPlain 英中分开/复制按钮/转义/无中文省略", () => {
   const noZh = renderPlain({ en: "E", zh: "" });
   assert.ok(!noZh.includes("plain-zh"));
   assert.equal((noZh.match(/class="plain-part"/g) || []).length, 1);
+});
+
+test("groupUnits 书内子目录聚合与自然序", () => {
+  const docs = [
+    { path: "书/Unit 10 Skies/R 10a.md", title: "R 10a", count: 2, duration: 14 },
+    { path: "书/Unit 2 Life/R 2a.md", title: "R 2a", count: 3, duration: 20 },
+    { path: "书/Unit 2 Life/R 2b.md", title: "R 2b", count: 2, duration: 10 },
+    { path: "书/散篇.md", title: "散篇", count: 1, duration: 6 },
+  ];
+  const { units, flat } = groupUnits(docs);
+  assert.deepEqual(units.map((u) => [u.dir, u.count, u.duration]), [
+    ["Unit 2 Life", 5, 30],
+    ["Unit 10 Skies", 2, 14],                 // 自然序:2 < 10
+  ]);
+  assert.deepEqual(flat.map((d) => d.title), ["散篇"]);   // 散文件不进 Unit
+  assert.deepEqual(groupUnits([]), { units: [], flat: [] });
 });
 
 test("groupManifest 按目录分组", () => {

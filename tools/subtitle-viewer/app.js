@@ -1,8 +1,8 @@
 // subtitle-viewer/app.js —— 副作用层：fetch / DOM / 计时 / 滚动。逻辑全在 core.js。
 import {
   esc, parseSubtitleMd, currentBlockIndex, isEnded, SyncClock, formatMs,
-  renderBlock, groupBooks, plainText, renderPlain, targetScrollTop,
-} from "./core.js?v=8";
+  renderBlock, groupBooks, groupUnits, plainText, renderPlain, targetScrollTop,
+} from "./core.js?v=9";
 
 const $ = (sel) => document.querySelector(sel);
 
@@ -27,8 +27,11 @@ async function loadManifest() {
     if (res.ok) manifest = await res.json();
   } catch { /* 网络失败 → 空列表提示 */ }
   const docs = manifest.docs || [];
-  const book = new URLSearchParams(location.search).get("book");
-  if (book) renderUnits(docs, book);
+  const params = new URLSearchParams(location.search);
+  const book = params.get("book");
+  const unit = params.get("unit");
+  if (book && unit) renderRecordings(docs, book, unit);
+  else if (book) renderUnits(docs, book);
   else renderBooks(docs);
 }
 
@@ -55,15 +58,37 @@ function renderUnits(docs, book) {
   const items = docs.filter((d) =>
     d.path.startsWith(book + "/") ||
     (book === "其他" && !d.path.includes("/")));
-  const title = items.length ? book : "没有这本书";
-  $("#app-title").textContent = title;
+  $("#app-title").textContent = items.length ? book : "没有这本书";
   $("#back").hidden = false;
   $("#back").textContent = "‹ 书库";
+  if (!items.length) {
+    $("#list").innerHTML = `<p class="empty">这本书还没有字幕。</p>`;
+    return;
+  }
+  const { units, flat } = groupUnits(items);
+  const cards = [
+    ...units.map((u) =>
+      gridCard(location.pathname + "?book=" + encodeURIComponent(book) +
+        "&unit=" + encodeURIComponent(u.dir),
+        u.dir, `${u.count} 条 · ${formatMs(u.duration * 1000)}`)),
+    ...flat.map((d) =>
+      gridCard(location.pathname + "?doc=" + encodeURIComponent(d.path),
+        d.title, `${d.count} 条 · ${formatMs(d.duration * 1000)}`)),
+  ];
+  $("#list").innerHTML = `<div class="grid">` + cards.join("") + `</div>`;
+}
+
+function renderRecordings(docs, book, unit) {          // 三级:Unit → Recording 网格
+  const prefix = (book === "其他" ? "" : book + "/") + unit + "/";
+  const items = docs.filter((d) => d.path.startsWith(prefix));
+  $("#app-title").textContent = unit;
+  $("#back").hidden = false;
+  $("#back").textContent = "‹ " + book;
   $("#list").innerHTML = items.length
     ? `<div class="grid">` + items.map((d) =>
         gridCard(location.pathname + "?doc=" + encodeURIComponent(d.path),
           d.title, `${d.count} 条 · ${formatMs(d.duration * 1000)}`)).join("") + `</div>`
-    : `<p class="empty">这本书还没有字幕。</p>`;
+    : `<p class="empty">这个 Unit 还没有字幕。</p>`;
 }
 
 /* ---------- 字幕视图 ---------- */
@@ -164,7 +189,14 @@ window.addEventListener("resize", () => { if (state.timer) measureKeyframes(); }
 
 /* ---------- 交互 ---------- */
 
-$("#back").addEventListener("click", () => { location.href = location.pathname; });
+$("#back").addEventListener("click", () => {          // 三级路由感知返回
+  const p = new URLSearchParams(location.search);
+  if (p.get("unit")) {
+    location.href = location.pathname + "?book=" + encodeURIComponent(p.get("book") || "");
+  } else {
+    location.href = location.pathname;
+  }
+});
 
 $("#minus5").addEventListener("click", () => state.clock.shift(-5000));
 $("#minus1").addEventListener("click", () => state.clock.shift(-1000));
