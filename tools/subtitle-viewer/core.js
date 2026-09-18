@@ -175,17 +175,20 @@ export function groupBooks(docs) {              // 一级书目:按目录聚合�
 
 export function groupUnits(docs) {               // 二级 Unit:书内条目按子目录聚合,散文件单列
   const map = new Map();                         // docs: 已过滤到某书的条目
-  const flat = [];                               // 返回 {units:[{dir,count,duration}], flat:[docs]}
-  for (const d of docs) {
+  const flat = [];                               // 返回 {units:[{dir,count,duration,doc?}], flat:[docs]}
+  for (const d of docs) {                        // 子目录仅 1 篇时给 doc 字段 → 卡片直达文档
     const rest = d.path.slice(d.path.indexOf("/") + 1);   // 去书名段
     if (!rest.includes("/")) { flat.push(d); continue; }
     const dir = rest.slice(0, rest.indexOf("/"));
-    if (!map.has(dir)) map.set(dir, { dir, count: 0, duration: 0 });
+    if (!map.has(dir)) map.set(dir, { dir, count: 0, duration: 0, items: [] });
     const u = map.get(dir);
     u.count += d.count;
     u.duration += d.duration;
+    u.items.push(d.path);
   }
-  const units = [...map.values()].sort(naturalCmp);
+  const units = [...map.values()]
+    .map(({ items, ...u }) => (items.length === 1 ? { ...u, doc: items[0] } : u))
+    .sort(naturalCmp);
   return { units, flat };
 }
 

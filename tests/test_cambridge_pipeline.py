@@ -360,6 +360,33 @@ def test_match_tracks_truncates_track_head_to_script_head_length():
     assert no_track == ["Track99.mp3"]
 
 
+def test_build_unit_md_合并单调与分段前缀():
+    from cambridge.build_md import build_unit_md
+    from subtitle_lib import TS_RE
+    recs = [
+        {"id": "1a", "track": "Track02.mp3", "zh": {0: "甲"}, "zh_source": "精翻",
+         "turns": [
+             {"label": "A", "text": "Hello.", "start": 1.0, "end": 2.0, "conf": 1.0},
+             {"label": "B", "text": "World.", "start": 5.0, "end": 6.0, "conf": 1.0},
+         ]},
+        {"id": "1b", "track": "Track03.mp3", "zh": {0: "乙"}, "zh_source": "精翻",
+         "turns": [
+             {"label": "T", "text": "Hi.", "start": 0.0, "end": 1.0, "conf": 1.0},
+         ]},
+    ]
+    md = build_unit_md("1 Family", recs)
+    import re as _re
+    ts = _re.findall(r"`(\d+:\d{2}) → (\d+:\d{2})`", md)
+    def secs(s):
+        m, sec = s.split(":"); return int(m) * 60 + int(sec)
+    starts = [secs(a) for a, _ in ts]
+    assert starts == sorted(starts), starts                 # 时间戳单调
+    assert starts[2] >= secs(ts[1][1]) + 5                  # 跨录音段间 ≥5s 间隙
+    assert "**Recording 1a · A: Hello.**" in md              # 分段前缀
+    assert "**Recording 1b · T: Hi.**" in md
+    assert "甲" in md and "乙" in md
+    assert "Track02.mp3" in md and "Track03.mp3" in md
+
 def test_fmt_ts():
     from cambridge.build_md import fmt_ts
 

@@ -27,14 +27,14 @@ OCR 提取 → faster-whisper 词级转写 → difflib 词序对齐 → 人工/L
 ```bash
 cd tools/subtitle-viewer
 python -m cambridge.run --dry          # 只出映射/置信报告
-python -m cambridge.run --only 1a      # 只生成一条
-python -m cambridge.run                # 全量（48 条 → src_root/剑桥雅思核心词汇精讲精练/）
+python -m cambridge.run                # 全量（22 个 Unit 合并页 → src_root/剑桥雅思核心词汇精讲精练/Unit N/）
 ```
 
 - 源数据：全本 `_OCR.pdf` + 49 条 Track 音频（路径见 run.py 常量）；中间产物缓存于仓库 `tmp/cambridge_cache/`（recordings.json / Track*.words.json / match.json），可重跑。改 extract.py 后需删 `tmp/cambridge_cache/recordings.json` 再跑，否则仍读旧提取缓存。
 - 翻译：`cambridge/translations/{id}.json`，键 = turn 序号（字符串）；1a–2b 为用户精翻稿，其余为 LLM 翻译待抽查。
 - 已知数据妥协：22b 说话人 "I" 被 OCR 成 "1" 并入 H 段；词表类录音为单块长段。
 - 数据修复记录：15a “Statement 1/2/3” 题号曾被尾部裸页码剥除，已收窄规则（尾部裸页码仅当前邻为句末标点/逗号时剥除）；OCR 噪声用定点覆盖表 `TEXT_OVERRIDES`（count 守卫）清理：15b/22a/6a 尾部页脚乱码串删除、16 的 CO»→CO₂。
+- 每个 Unit 合并为一个 md：时间戳跨录音累加保证单调（1b/1c 显示顺延时间），段间留 5s 间隙，每段首块带「Recording Na ·」前缀；换音频时点该段首个时间戳重新锚定。
 - 音频在音频站（/script/books/剑桥雅思核心词汇精讲精练/）播放，字幕页手动对时跟读。
 
 ## 测试

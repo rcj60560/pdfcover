@@ -10,7 +10,7 @@ HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE.parent))          # tools/subtitle-viewer → import cambridge.*
 
 from cambridge.align import align_turns, match_tracks
-from cambridge.build_md import build_md, md_filename
+from cambridge.build_md import build_unit_md, unit_filename
 from cambridge.extract import extract_from_pdf
 from cambridge.transcribe import transcribe_all
 
@@ -47,6 +47,7 @@ def main() -> None:
     units = json.loads((HERE / "units.json").read_text(encoding="utf-8"))
 
     report = []
+    by_unit: dict[str, list[dict]] = {}               # Unit 号 → 该单元全部录音
     for rec in recs:
         if args.only and rec["id"] != args.only:
             continue
@@ -57,16 +58,20 @@ def main() -> None:
         tfile = HERE / "translations" / f"{rid}.json"
         zh = ({int(k): v for k, v in json.loads(tfile.read_text(encoding="utf-8")).items()}
               if tfile.is_file() else {})
-        unit = f"{rid.rstrip('abcdefghijklmnopqrstuvwxyz')} {units.get(rid.rstrip('abcdefghijklmnopqrstuvwxyz'), '')}".strip()
+        num = rid.rstrip("abcdefghijklmnopqrstuvwxyz")
+        unit_title = f"{num} {units.get(num, '')}".strip()
         low = sum(1 for t in aligned if t["conf"] < 0.5)
         report.append(f"{rid} → {mapping[rid]}: {len(aligned)} 段, 低置信 {low}, 中文 {len(zh)}/{len(aligned)}")
-        if args.dry:
-            continue
-        md = build_md(rid, unit, aligned, mapping[rid], zh,
-                      "精翻" if rid in USER_TRANSLATED else "LLM 翻译")
-        unit_dir = args.out / f"Unit {unit}"          # 三级导航:Unit 子目录 → Recording md
-        unit_dir.mkdir(parents=True, exist_ok=True)
-        (unit_dir / md_filename(rid, unit)).write_text(md, encoding="utf-8")
+        by_unit.setdefault(unit_title, []).append({
+            "id": rid, "track": mapping[rid], "turns": aligned, "zh": zh,
+            "zh_source": "精翻" if rid in USER_TRANSLATED else "LLM 翻译",
+        })
+    if not args.dry:
+        for unit_title, rs in by_unit.items():        # 每 Unit 合并为一个 md
+            md = build_unit_md(unit_title, rs)
+            unit_dir = args.out / f"Unit {unit_title}"
+            unit_dir.mkdir(parents=True, exist_ok=True)
+            (unit_dir / unit_filename(unit_title)).write_text(md, encoding="utf-8")
 
     print("\n".join(report) or "无录音")
     print("未匹配录音:", " ".join(no_rec) or "-", "| 未匹配 Track:", " ".join(no_track) or "-")

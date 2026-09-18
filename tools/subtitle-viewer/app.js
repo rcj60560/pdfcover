@@ -68,8 +68,9 @@ function renderUnits(docs, book) {
   const { units, flat } = groupUnits(items);
   const cards = [
     ...units.map((u) =>
-      gridCard(location.pathname + "?book=" + encodeURIComponent(book) +
-        "&unit=" + encodeURIComponent(u.dir),
+      gridCard(location.pathname + (u.doc
+        ? "?doc=" + encodeURIComponent(u.doc)                   // 单篇 Unit:直达文档
+        : "?book=" + encodeURIComponent(book) + "&unit=" + encodeURIComponent(u.dir)),
         u.dir, `${u.count} 条 · ${formatMs(u.duration * 1000)}`)),
     ...flat.map((d) =>
       gridCard(location.pathname + "?doc=" + encodeURIComponent(d.path),
