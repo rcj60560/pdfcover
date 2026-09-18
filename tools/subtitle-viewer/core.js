@@ -159,12 +159,14 @@ export function groupManifest(docs) {
     .map(([dir, items]) => ({ dir: dir || "字幕", items }));
 }
 
-export function groupBooks(docs) {              // 一级书目:按目录聚合篇数与总时长
+export function groupBooks(docs) {              // 一级书目:按首段目录聚合(嵌套子目录归同一书)
   const map = new Map();
   for (const d of docs) {
-    const dir = d.path.includes("/") ? d.path.slice(0, d.path.lastIndexOf("/")) : "";
-    if (!map.has(dir)) map.set(dir, { dir, count: 0, duration: 0 });
+    const slash = d.path.indexOf("/");
+    const dir = slash === -1 ? "" : d.path.slice(0, slash);
+    if (!map.has(dir)) map.set(dir, { dir, docs: 0, count: 0, duration: 0 });
     const b = map.get(dir);
+    b.docs += 1;
     b.count += d.count;
     b.duration += d.duration;
   }

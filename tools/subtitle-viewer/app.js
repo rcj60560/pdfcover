@@ -2,7 +2,7 @@
 import {
   esc, parseSubtitleMd, currentBlockIndex, isEnded, SyncClock, formatMs,
   renderBlock, groupBooks, groupUnits, plainText, renderPlain, targetScrollTop,
-} from "./core.js?v=9";
+} from "./core.js?v=10";
 
 const $ = (sel) => document.querySelector(sel);
 
@@ -51,7 +51,7 @@ function renderBooks(docs) {
   }
   $("#list").innerHTML = `<div class="grid">` + books.map((b) =>
     gridCard(location.pathname + "?book=" + encodeURIComponent(b.dir),
-      b.dir, `${b.count} 篇 · ${formatMs(b.duration * 1000)}`)).join("") + `</div>`;
+      b.dir, `${b.docs} 篇 · ${formatMs(b.duration * 1000)}`)).join("") + `</div>`;
 }
 
 function renderUnits(docs, book) {

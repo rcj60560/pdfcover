@@ -173,15 +173,18 @@ test("groupManifest 按目录分组", () => {
   assert.equal(groups[0].items.length, 1);
 });
 
-test("groupBooks 按书聚合数量与时长,根目录归其他", () => {
+test("groupBooks 按首段目录聚合,嵌套子目录归同一书", () => {
   const books = groupBooks([
     { path: "in-use/Unit 1.md", title: "Unit 1", count: 3, duration: 20 },
     { path: "in-use/Unit 2.md", title: "Unit 2", count: 2, duration: 14 },
+    { path: "剑桥/Unit 1 Growing up/Unit 1.md", title: "U1", count: 46, duration: 400 },
+    { path: "剑桥/Unit 2 Life/Unit 2.md", title: "U2", count: 10, duration: 100 },
+    { path: "剑桥/Unit 2 Life/Extra.md", title: "E", count: 5, duration: 50 },
     { path: "root.md", title: "root", count: 1, duration: 6 },
   ]);
   assert.deepEqual(
-    books.map((b) => [b.dir, b.count, b.duration]),
-    [["其他", 1, 6], ["in-use", 5, 34]],
+    books.map((b) => [b.dir, b.docs, b.count, b.duration]),
+    [["其他", 1, 1, 6], ["剑桥", 3, 61, 550], ["in-use", 2, 5, 34]],   // zh-CN 排序:中文在拉丁前
   );
   assert.deepEqual(groupBooks([]), []);
 });
