@@ -44,6 +44,27 @@ test("sortTracks numeric order for unpadded", () => {
   assert.deepEqual(sortTracks(["10.mp3", "2.mp3", "1.mp3"]), ["1.mp3", "2.mp3", "10.mp3"]);
 });
 
+test("sortTracks natural: Page008 before Page008-2", () => {
+  assert.deepEqual(
+    sortTracks(["Page008-2.mp3", "Page008.mp3", "Page010.mp3"]),
+    ["Page008.mp3", "Page008-2.mp3", "Page010.mp3"],
+  );
+});
+
+test("sortTracks natural: EVIUAD-9 before EVIUAD-24", () => {
+  assert.deepEqual(
+    sortTracks(["EVIUAD-24.1.mp3", "EVIUAD-9.1.mp3", "EVIUAD-9.2.mp3"]),
+    ["EVIUAD-9.1.mp3", "EVIUAD-9.2.mp3", "EVIUAD-24.1.mp3"],
+  );
+});
+
+test("sortTracks U_001.A 序列保序", () => {
+  assert.deepEqual(
+    sortTracks(["U_002.A.mp3", "U_001.B.mp3", "U_001.A.mp3", "U_010.A.mp3"]),
+    ["U_001.A.mp3", "U_001.B.mp3", "U_002.A.mp3", "U_010.A.mp3"],
+  );
+});
+
 test("sortTracks zero-padded order", () => {
   assert.deepEqual(sortTracks(["020.mp3", "001.mp3", "002.mp3"]), ["001.mp3", "002.mp3", "020.mp3"]);
 });

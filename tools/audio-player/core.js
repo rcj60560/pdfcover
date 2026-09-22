@@ -31,17 +31,18 @@ export function parseTracks(entries) {
 }
 
 export function sortTracks(names) {
-  return [...names].sort((a, b) => {
-    const na = parseInt(a, 10);
-    const nb = parseInt(b, 10);
-    if (!isNaN(na) && !isNaN(nb)) {
-      if (na !== nb) return na - nb;
-      return a.localeCompare(b);
+  const key = (s) => s.replace(/\.[^.]*$/, "").split(/(\d+)/);   // 去扩展名:Page008 排在 Page008-2 前
+  const cmp = (a, b) => {
+    const A = key(a), B = key(b);
+    for (let i = 0; i < Math.max(A.length, B.length); i++) {
+      const x = A[i] ?? "", y = B[i] ?? "";
+      if (x === y) continue;
+      if (/^\d+$/.test(x) && /^\d+$/.test(y)) return +x - +y;    // 数字段按数值:EVIUAD-9 < EVIUAD-24
+      return x.localeCompare(y);
     }
-    if (!isNaN(na)) return -1;
-    if (!isNaN(nb)) return 1;
-    return a.localeCompare(b);
-  });
+    return 0;
+  };
+  return [...names].sort(cmp);
 }
 
 export function cycleLoop(mode) {

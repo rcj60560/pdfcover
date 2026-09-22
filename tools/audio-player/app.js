@@ -3,7 +3,7 @@ import {
   parseBooks, parseTracks, sortTracks,
   cycleLoop, cycleSpeed, nextTrack, clampSeek, formatTime,
   renderBookCard, renderTrackRow, renderLinkCard, topicsHref,
-} from "./core.js";
+} from "./core.js?v=20260921";
 
 const BOOKS = "books/"; // 相对页面：prod 解析为 /script/books/，本地为 /books/
 const $ = (id) => document.getElementById(id);
