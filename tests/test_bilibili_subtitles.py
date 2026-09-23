@@ -230,6 +230,33 @@ def test_generate_cli_writes_outputs_via_audio_pipeline(monkeypatch, tmp_path):
     assert "faster-whisper" in content and "Fake" in content
 
 
+def test_generate_without_translate_skips_backends_and_marks_pending(monkeypatch, tmp_path):
+    """--no-translate（词典精翻流程）：不碰机器翻译后端，md 标注中文待词典对照。"""
+    import direct_generate
+
+    monkeypatch.setattr(direct_generate, "rows_from_native_tracks", lambda url, browser: None)
+    fake_audio = tmp_path / "a.m4a"
+    fake_audio.write_bytes(b"audio-bytes")
+    monkeypatch.setattr(direct_generate, "download_audio", lambda url, temp_dir, browser: (
+        fake_audio, {"title": "CLI 标题", "webpage_url": "https://www.bilibili.com/video/BV1pgtn6NENb"},
+    ))
+    monkeypatch.setattr(direct_generate, "transcribe_audio",
+                        lambda audio_path, model_name, **kwargs: [cue(0, 2, "Hello there.")])
+
+    def forbidden(rows, backends=None, log=None):
+        raise AssertionError("translate=False 不应调用机器翻译后端")
+
+    monkeypatch.setattr(direct_generate, "fill_missing_languages", forbidden)
+
+    md_path, xlsx_path = direct_generate.generate("BV1pgtn6NENb", tmp_path, translate=False)
+
+    content = md_path.read_text(encoding="utf-8")
+    assert "**Hello there.**" in content
+    assert "待词典对照" in content
+    assert "机器翻译" not in content
+    assert xlsx_path.exists()
+
+
 def test_build_rows_from_same_bilingual_track():
     captions = (cue(0, 2, "Welcome home.\n欢迎回家。"),)
     track = core.SubtitleTrack("x", "zh-CN", "双语", "manual", "bilingual", captions)
@@ -849,6 +876,40 @@ def test_transcribe_keeps_rows_when_translation_fails(monkeypatch):
 
     srt = client.get(f"/api/jobs/{job_id}/download/srt")
     assert srt.status_code == 200 and "Hello there." in srt.get_data(as_text=True)
+
+
+def test_transcribe_without_translate_stays_english_only(monkeypatch):
+    """translate=false：识别完成后直接出结果，不触发机器翻译，标注待词典对照。"""
+    from direct_generate import AudioPipelineResult
+
+    web = _load_web()
+    job_id = web.jobs.put(web.Job(video=_no_track_video()))
+    monkeypatch.setattr(web, "_whisper_deps_missing", lambda: None)
+    monkeypatch.setattr(web, "TRANSCRIBE_PIPELINE", lambda url, browser, model_name, log=None: AudioPipelineResult(
+        "t", "https://www.bilibili.com/video/BV1pgtn6NENb",
+        [core.BilingualRow(0, 2, "Hello there.", "")],
+        ["English：faster-whisper small.en 机器识别"],
+    ))
+
+    def forbidden(rows, log=None):
+        raise AssertionError("translate=false 不应触发机器翻译")
+
+    monkeypatch.setattr(web, "TRANSLATE_ROWS", forbidden)
+
+    client = web.app.test_client()
+    started = client.post(f"/api/jobs/{job_id}/transcribe",
+                          json={"browser": "none", "translate": False})
+    assert started.status_code == 200 and started.get_json()["ok"]
+    web.jobs.get(job_id).transcribe_thread.join(timeout=5)
+
+    body = client.get(f"/api/jobs/{job_id}/transcribe/status").get_json()
+    assert body["phase"] == "done" and body["error"] == ""
+    assert body["count"] == 1 and body["has_english"] and not body["has_chinese"]
+    assert "机器翻译" not in body["notice"]
+    assert "待词典对照" in web.jobs.get(job_id).chinese_label
+
+    markdown = client.get(f"/api/jobs/{job_id}/download/md").get_data(as_text=True)
+    assert "Hello there." in markdown and "待词典对照" in markdown
 
 
 def test_generate_cli_keeps_outputs_when_translation_fails(monkeypatch, tmp_path):

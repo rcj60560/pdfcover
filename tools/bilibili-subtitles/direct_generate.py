@@ -598,6 +598,9 @@ def generate(
                 methods.append("中文：机器翻译失败（内容已保留）")
             if any(row.chinese and not row.english for row in rows):
                 methods.append("English：机器翻译失败（内容已保留）")
+    elif any(row.english and not row.chinese for row in rows):
+        # 词典精翻流程：跳过机翻，md 头部标注中文来源，提示这是待回填的半成品。
+        methods.append("中文：待词典对照")
     print("[5/5] 写入 Markdown / Excel", flush=True)
     output_dir.mkdir(parents=True, exist_ok=True)
     basename = core.sanitize_filename(title) + "-双语字幕"
@@ -619,7 +622,8 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("-o", "--output-dir", type=Path, default=DEFAULT_OUTPUT_DIR)
     parser.add_argument("--browser", choices=("none", "edge", "chrome", "firefox"), default="none")
     parser.add_argument("--whisper-model", default="small.en", help="默认 small.en；速度优先可用 base.en")
-    parser.add_argument("--no-translate", action="store_true", help="不自动补齐缺失语言")
+    parser.add_argument("--no-translate", action="store_true",
+                        help="跳过机器翻译，中文留待词典整段对照后回填")
     args = parser.parse_args(argv)
     try:
         generate(args.url, args.output_dir, args.browser, args.whisper_model, not args.no_translate)

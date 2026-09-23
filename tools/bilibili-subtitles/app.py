@@ -60,6 +60,7 @@ class Job:
     chinese_label: str = ""
     transcribe: TaskState = field(default_factory=TaskState)
     transcribe_thread: Thread | None = None
+    translate: bool = True  # 语音识别后是否机器翻译；False = 仅拉英文，中文待词典对照
     tts: TaskState = field(default_factory=TaskState)
     tts_thread: Thread | None = None
     mp3_bytes: bytes | None = None
@@ -160,7 +161,7 @@ def derive_transcribe_stage(lines: list[str]) -> dict:
     return {"step": step, "detail": detail}
 
 
-def _run_transcribe(job: Job, url: str, browser: str, model_name: str) -> None:
+def _run_transcribe(job: Job, url: str, browser: str, model_name: str, translate: bool = True) -> None:
     state = job.transcribe
 
     def say(message: str) -> None:
@@ -177,23 +178,31 @@ def _run_transcribe(job: Job, url: str, browser: str, model_name: str) -> None:
 
     # 转写已落盘；翻译失败时连同成功的部分译文一起保留。
     job.rows = result.rows
-    try:
-        rows, methods = TRANSLATE_ROWS(result.rows, log=say)
-        chinese_missing = False
-    except Exception as exc:
+    if translate:
+        try:
+            rows, methods = TRANSLATE_ROWS(result.rows, log=say)
+            chinese_missing = False
+        except Exception as exc:
+            rows, methods = result.rows, []
+            if isinstance(exc, direct_generate.PartialTranslationError):
+                rows, methods = exc.rows or rows, exc.methods
+            chinese_missing = True
+            say(f"      中文翻译失败：{exc}")
+            say(f"      处理建议：{direct_generate.translation_failure_hint(exc)}")
+            say("      已保留英文转写和成功译文；恢复后可点『重试翻译』补齐缺失部分")
+    else:
         rows, methods = result.rows, []
-        if isinstance(exc, direct_generate.PartialTranslationError):
-            rows, methods = exc.rows or rows, exc.methods
-        chinese_missing = True
-        say(f"      中文翻译失败：{exc}")
-        say(f"      处理建议：{direct_generate.translation_failure_hint(exc)}")
-        say("      已保留英文转写和成功译文；恢复后可点『重试翻译』补齐缺失部分")
+        chinese_missing = False
+        say("      已按选项跳过机器翻译：中文留空，待词典整段对照后回填")
 
     english_text, chinese_text = direct_generate.split_methods(result.methods + methods)
     job.rows = rows
     job.english_label = english_text or "语音识别"
-    job.chinese_label = ((chinese_text + '；' if chinese_text else '') + "翻译失败（已有内容已保留）" if chinese_missing
-                         else chinese_text or "机器翻译")
+    if not translate:
+        job.chinese_label = "待词典对照"
+    else:
+        job.chinese_label = ((chinese_text + '；' if chinese_text else '') + "翻译失败（已有内容已保留）" if chinese_missing
+                             else chinese_text or "机器翻译")
     state.error = ""
     state.phase = "done"
 
@@ -357,15 +366,17 @@ def start_transcribe(job_id: str):
     data = request.get_json(silent=True) or {}
     browser = str(data.get("browser") or "none")
     model_name = str(data.get("model") or "small.en")
+    translate = bool(data.get("translate", True))
     with _transcribe_start_lock:
         if job.transcribe.phase == "running":
             return jsonify(ok=False, error="识别任务正在进行中，请等待完成"), 409
         job.transcribe.phase = "running"
         job.transcribe.error = ""
         job.transcribe.log = []
+        job.translate = translate
         thread = Thread(
             target=_run_transcribe,
-            args=(job, job.video.source_url, browser, model_name),
+            args=(job, job.video.source_url, browser, model_name, translate),
             daemon=True,
         )
         job.transcribe_thread = thread
@@ -415,7 +426,9 @@ def transcribe_status(job_id: str):
             has_english=any(row.english for row in rows),
             has_chinese=any(row.chinese for row in rows),
             translation_missing=_rows_missing_translation(rows),
-            notice="内容由语音识别与机器翻译生成，供学习对照，非作者原字幕。",
+            notice=("内容由语音识别与机器翻译生成，供学习对照，非作者原字幕。"
+                    if job.translate else
+                    "内容由语音识别生成；中文待词典整段对照后回填，非作者原字幕。"),
         )
     return jsonify(payload)
 

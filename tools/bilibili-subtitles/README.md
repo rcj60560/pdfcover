@@ -37,7 +37,7 @@ python -m pip install -r tools/bilibili-subtitles/requirements-whisper.txt
 python tools/bilibili-subtitles/direct_generate.py "https://www.bilibili.com/video/BV..." -o tools/bilibili-subtitles/outputs/BV...
 ```
 
-处理顺序：优先使用视频字幕轨；没有字幕轨时复用本地转写，或下载临时音频，用 `faster-whisper small.en` 生成英文时间轴，再机器翻译补中文。输出 `.md` 和 `.xlsx`，转写与成功译文另存本地缓存，临时音频自动删除。机器识别/翻译会写进 Markdown 的生成说明，不冒充作者字幕。
+处理顺序：优先使用视频字幕轨；没有字幕轨时复用本地转写，或下载临时音频，用 `faster-whisper small.en` 生成英文时间轴，再机器翻译补中文。输出 `.md` 和 `.xlsx`，转写与成功译文另存本地缓存，临时音频自动删除。机器识别/翻译会写进 Markdown 的生成说明，不冒充作者字幕。加 `--no-translate` 则跳过机翻仅出英文（词典精翻流程第一步，见下节）。
 
 机器翻译先检查所有后端的缓存，再尝试 Google Translate → MyMemory（免 key）。
 Google 使用网页翻译端点，并非 Google Cloud Translation API；可设置 `HTTPS_PROXY`。
@@ -73,17 +73,16 @@ MyMemory 使用 HTTPS，单次按 UTF-8 **字节**限制切分（采用 480 字�
 
 ## 词典精翻排版（中文质量升级）
 
-机器翻译是**逐条孤立**进行的，而字幕块常在句子中间切断（如 `...the moment you walked` / `out of the exam hall?` 分属两块），断句处必出误译；标题、习语也常直译。整段丢给词典翻译则语境完整，质量明显更好。
+机器翻译是**逐条孤立**进行的，而字幕块常在句子中间切断（如 `...the moment you walked` / `out of the exam hall?` 分属两块），断句处必出误译；标题、习语也常直译。整段丢给词典翻译则语境完整，质量明显更好。推荐配合**仅拉英文模式**跳过机翻，不为占位中文浪费时间：
 
-需要高质量中文时，按此流程操作（低频，手动可接受）：
-
-1. 照常用本工具生成字幕 md——英文行质量可靠，Google 中文只当占位。
-2. 把**整段英文**交给词典/翻译工具。整段英文可从 subtitle-viewer 打开该字幕，
-   顶栏「⬇ 纯文本」→ 英文卡片「📋 复制」一键获得。
+1. 生成时就跳过机翻：CLI 加 `--no-translate`；网页勾选「跳过机翻·仅拉英文」。
+   产出的 md 只有英文行，头部标注「中文 `待词典对照`」。
+2. 把**整段英文**交给词典（欧路词典会员支持长文整段翻译）。整段英文可从 subtitle-viewer
+   打开该字幕，顶栏「⬇ 纯文本」→ 英文卡片「📋 复制」一键获得。
 3. 词典输出的**整段中文，以文字形式复制给 Claude**（勿发截图——分辨率不足只能靠猜），
    并说明对应哪个 md 文件。
 4. Claude 按每个字幕块的英文断句点对齐切割中文：句中被切断的块，中文跟着同一语义点切断，
-   跨块连读仍是完整通顺的一句；替换 md 中文行，并把头部来源说明从「机器翻译」改为「词典对照」。
+   跨块连读仍是完整通顺的一句；替换 md 中文行，并把头部来源说明从「待词典对照」改为「词典对照」。
 5. 上手机端：`cd tools/subtitle-viewer && python sync_subtitles.py`。
 
 ## 能处理什么

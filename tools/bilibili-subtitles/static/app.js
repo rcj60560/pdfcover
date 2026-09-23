@@ -199,13 +199,17 @@ const TRANSCRIBE_PHASE_TEXT = {
 
 async function startTranscribe() {
   const button = $("transcribe-button");
+  const noTranslate = $("no-translate").checked;
   button.disabled = true;
   $("transcribe-progress").hidden = false;
-  $("transcribe-phase").textContent = TRANSCRIBE_PHASE_TEXT.running;
+  $("transcribe-phase").textContent = noTranslate
+    ? "识别中：下载音频 → Whisper 转写（仅英文，约几分钟，请保持页面打开）"
+    : TRANSCRIBE_PHASE_TEXT.running;
   $("transcribe-log").textContent = "正在启动识别任务…\n";
   try {
     await api(`/api/jobs/${state.jobId}/transcribe`, {
       browser: localStorage.getItem("bili-subtitle-browser") || "none",
+      translate: !noTranslate,
     });
     transcribeTimer = window.setTimeout(pollTranscribe, 1500);
   } catch (error) {

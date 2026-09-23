@@ -90,6 +90,8 @@ button, a.export { border: 0; cursor: pointer; text-decoration: none; }
 .transcribe-offer { margin-top: 16px; padding: 16px; border: 1px dashed #c9bdf0; border-radius: 16px; background: #f6f3fd; }
 .offer-copy { margin: 0 0 14px; color: #4d4463; font-size: 13px; }
 .transcribe-offer .generate { width: 100%; }
+.no-translate-option { display: flex; align-items: center; gap: 6px; margin: 10px 0 0; color: #4d4463; font-size: 12px; }
+.no-translate-option input { accent-color: #6a5acd; }
 .transcribe-progress { margin-top: 14px; }
 .step-track {
   display: flex; gap: 6px; flex-wrap: wrap; margin: 0 0 10px; padding: 0; list-style: none;
