@@ -16,14 +16,14 @@
     </div>
     <header class="hero">
       <div class="eyebrow">MY TOOLKIT · LANGUAGE LAB</div>
-      <h1>B站视频，变成一份<br><span>好读的双语字幕。</span></h1>
-      <p>手机挂着听，电脑沿时间轴看英文原句和中文对照。只提取字幕，不下载视频。</p>
+      <h1>B站视频 → 英文原文 →<br><span>词典精翻双语字幕。</span></h1>
+      <p>贴链接拉取英文原文，词典整段精翻，一键对齐排版，下载双语 md。</p>
     </header>
 
     <section class="panel source-panel" aria-labelledby="source-heading">
       <div class="step-title">
         <span class="step-num">01</span>
-        <div><h2 id="source-heading">读取视频字幕</h2><p>粘贴视频页、短链，或直接输入 BV 号</p></div>
+        <div><h2 id="source-heading">拉取英文原文</h2><p>粘贴视频页、短链，或直接输入 BV 号；无字幕轨时自动语音识别（仅英文，跳过机翻）</p></div>
       </div>
       <form id="inspect-form">
         <div class="url-row">
@@ -31,7 +31,7 @@
           <input id="video-url" name="url" type="text" autocomplete="off"
                  placeholder="https://www.bilibili.com/video/BV..." required>
           <button class="primary" id="inspect-button" type="submit">
-            <span>读取字幕</span><span aria-hidden="true">→</span>
+            <span>拉取英文</span><span aria-hidden="true">→</span>
           </button>
         </div>
         <div class="login-row">
@@ -48,10 +48,10 @@
       <div id="status" class="status" role="status" aria-live="polite" hidden></div>
     </section>
 
-    <section class="panel tracks-panel" id="tracks-panel" aria-labelledby="tracks-heading" hidden>
+    <section class="panel tracks-panel" id="fetch-panel" aria-labelledby="fetch-heading" hidden>
       <div class="step-title">
         <span class="step-num">02</span>
-        <div><h2 id="tracks-heading">选择中英文轨道</h2><p>已按字幕内容自动推荐；分段不一致时会按时间轴对齐</p></div>
+        <div><h2 id="fetch-heading">拉取进度</h2><p>下载临时音频（识别完自动删除，不下载视频）→ Whisper 识别 → 完成后自动进入阅读区</p></div>
       </div>
       <div class="video-meta">
         <div class="video-mark">BV</div>
@@ -60,45 +60,19 @@
           <p id="video-detail"></p>
         </div>
       </div>
-      <div id="track-chips" class="track-chips"></div>
       <div id="warnings" class="warnings" hidden></div>
-      <div id="transcribe-offer" class="transcribe-offer" hidden>
-        <p class="offer-copy">
-          这个视频没有可提取的字幕轨。如果 UP 主说的是英文，可以下载临时音频（识别完自动删除，不下载视频），
-          用 Whisper 识别英文语音，再机器翻译成中文，生成带时间轴的英中双语字幕。约需几分钟，请保持页面打开。
-        </p>
-        <button class="primary generate" id="transcribe-button" type="button">识别英文语音并生成双语字幕</button>
-        <label class="no-translate-option">
-          <input type="checkbox" id="no-translate">
-          跳过机翻·仅拉英文（英文复制给词典整段精翻，中文回填走「词典对照」流程）
-        </label>
-        <button class="primary" id="retranslate-button" type="button" hidden>重试翻译（补齐中文）</button>
-        <div id="transcribe-progress" class="transcribe-progress" hidden>
-          <ol class="step-track" id="transcribe-steps">
-            <li class="step" data-step="1">下载音频</li>
-            <li class="step" data-step="2">Whisper 转写</li>
-            <li class="step" data-step="3">机器翻译</li>
-            <li class="step" data-step="4">完成</li>
-          </ol>
-          <div class="progress-head">
-            <span class="progress-dot" aria-hidden="true"></span>
-            <span id="transcribe-phase">准备中…</span>
-          </div>
-          <pre id="transcribe-log" class="transcribe-log"></pre>
+      <div id="transcribe-progress" class="transcribe-progress" hidden>
+        <ol class="step-track" id="transcribe-steps">
+          <li class="step" data-step="1">下载音频</li>
+          <li class="step" data-step="2">Whisper 转写</li>
+          <li class="step" data-step="3">完成</li>
+        </ol>
+        <div class="progress-head">
+          <span class="progress-dot" aria-hidden="true"></span>
+          <span id="transcribe-phase">准备中…</span>
         </div>
+        <pre id="transcribe-log" class="transcribe-log"></pre>
       </div>
-      <div class="track-grid">
-        <label>
-          <span>English</span>
-          <select id="english-track"></select>
-        </label>
-        <div class="pair-symbol" aria-hidden="true">↔</div>
-        <label>
-          <span>中文</span>
-          <select id="chinese-track"></select>
-        </label>
-      </div>
-      <button class="primary generate" id="generate-button" type="button">生成对照字幕</button>
     </section>
 
     <section id="reader" class="reader" aria-labelledby="reader-title" hidden>
@@ -110,43 +84,9 @@
         </div>
         <div class="export-row">
           <a class="export md" id="download-md">下载 Markdown</a>
-          <a class="export xlsx" id="download-xlsx">下载 Excel</a>
-          <a class="export srt" id="download-srt">下载 SRT</a>
-          <button class="export tts" id="tts-button" type="button">转 MP3 音频</button>
         </div>
       </div>
       <div id="reader-notice" class="notice" hidden></div>
-      <section id="tts-panel" class="tts-panel" hidden>
-        <h3>字幕转 MP3（借用「文本转语音 MP3」的 edge-tts 核心）</h3>
-        <div class="tts-controls">
-          <label>朗读内容
-            <select id="tts-lang">
-              <option value="english" selected>英文全文</option>
-              <option value="chinese">中文全文</option>
-            </select>
-          </label>
-          <label>语音 <select id="tts-voice"></select></label>
-          <label>语速
-            <select id="tts-rate">
-              <option value="-20">慢 -20%</option>
-              <option value="-10">稍慢 -10%</option>
-              <option value="0" selected>正常</option>
-              <option value="10">稍快 +10%</option>
-              <option value="20">快 +20%</option>
-            </select>
-          </label>
-          <button class="primary" id="tts-start" type="button">开始合成</button>
-        </div>
-        <p class="tts-hint" id="tts-hint" hidden></p>
-        <div id="tts-progress" class="transcribe-progress" hidden>
-          <div class="progress-head">
-            <span class="progress-dot" aria-hidden="true"></span>
-            <span id="tts-phase">合成中…</span>
-          </div>
-          <pre id="tts-log" class="transcribe-log"></pre>
-        </div>
-        <a class="export tts" id="tts-download" hidden>下载 MP3</a>
-      </section>
       <div class="reader-toolbar">
         <label class="search-wrap">
           <span aria-hidden="true">⌕</span>
@@ -156,7 +96,6 @@
           <button id="font-smaller" type="button" title="减小字号">A−</button>
           <button id="font-larger" type="button" title="增大字号">A+</button>
         </div>
-        <button class="copy-button" id="copy-md" type="button">复制 Markdown</button>
         <button class="copy-button" id="copy-en" type="button" title="复制不换行英文整段，直接丢给词典整段翻译">📋 复制英文全文</button>
       </div>
       <div class="reader-body">
@@ -185,7 +124,8 @@
     </section>
 
     <footer>
-      <strong>说明</strong> · 优先读取视频自带/AI 字幕轨；无字幕轨的英文口播视频可用语音识别（临时下载音频，识别完自动删除，不下载视频）。画面烧录字幕不做 OCR；机器翻译供学习对照。
+      <strong>说明</strong> · 无字幕轨的英文口播视频下载临时音频用 Whisper 识别（识别完自动删除，不下载视频）；
+      中文由欧路词典整段精翻、本机模型对齐排版，不机器翻译。画面烧录字幕不做 OCR。
     </footer>
   </main>
   <script src="{{ url_for('static', filename='app.js') }}" defer></script>
