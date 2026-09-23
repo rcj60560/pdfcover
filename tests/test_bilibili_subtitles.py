@@ -912,6 +912,70 @@ def test_transcribe_without_translate_stays_english_only(monkeypatch):
     assert "Hello there." in markdown and "待词典对照" in markdown
 
 
+def test_split_aligned_chinese_joins_blank_line_chunks():
+    """对齐中文粘贴格式：块间空行分隔，块内换行合并（中文不用空格）。"""
+    text = "第一块可能包含\n内部换行。\n\n第二块。\n\n\n第三块。"
+    assert core.split_aligned_chinese(text) == ["第一块可能包含内部换行。", "第二块。", "第三块。"]
+    assert core.split_aligned_chinese("   \n  ") == []
+
+
+def _job_with_rows(web):
+    job = web.Job(video=_no_track_video())
+    job.rows = [
+        core.BilingualRow(0, 2, "Hello there.", ""),
+        core.BilingualRow(2, 4, "Bye now.", ""),
+    ]
+    job.english_label = "faster-whisper small.en 机器识别"
+    job.chinese_label = "待词典对照"
+    return job
+
+
+def test_plain_text_endpoint_returns_unwrapped_english_join():
+    """复制英文全文：空格拼接、无换行，丢给词典整段翻译用。"""
+    web = _load_web()
+    job_id = web.jobs.put(_job_with_rows(web))
+    client = web.app.test_client()
+
+    response = client.get(f"/api/jobs/{job_id}/plain-text")
+
+    assert response.status_code == 200
+    body = response.get_json()
+    assert body["english"] == "Hello there. Bye now."
+    assert "\n" not in body["english"]
+
+
+def test_import_chinese_fills_rows_and_download_becomes_bilingual():
+    """导入对齐中文：段数吻合则逐块回填，下载 md 变双语稿并改标注。"""
+    web = _load_web()
+    job_id = web.jobs.put(_job_with_rows(web))
+    client = web.app.test_client()
+
+    imported = client.post(f"/api/jobs/{job_id}/import-chinese",
+                           json={"text": "你好呀。\n\n再见啦。"})
+    assert imported.status_code == 200
+    body = imported.get_json()
+    assert body["ok"] and body["count"] == 2
+    assert [row["chinese"] for row in body["rows"]] == ["你好呀。", "再见啦。"]
+
+    markdown = client.get(f"/api/jobs/{job_id}/download/md")
+    assert markdown.status_code == 200
+    text = markdown.get_data(as_text=True)
+    assert "Hello there." in text and "你好呀。" in text
+    assert "欧路词典对照" in text and "待词典对照" not in text
+
+
+def test_import_chinese_rejects_count_mismatch():
+    """段数不匹配：400 并同时报出两边的数量，方便定位复制缺漏。"""
+    web = _load_web()
+    job_id = web.jobs.put(_job_with_rows(web))
+    client = web.app.test_client()
+
+    response = client.post(f"/api/jobs/{job_id}/import-chinese", json={"text": "只有一段。"})
+    assert response.status_code == 400
+    error = response.get_json()["error"]
+    assert "1" in error and "2" in error
+
+
 def test_generate_cli_keeps_outputs_when_translation_fails(monkeypatch, tmp_path):
     import direct_generate
 

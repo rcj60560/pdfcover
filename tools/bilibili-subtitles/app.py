@@ -8,7 +8,7 @@ import tempfile
 import time
 from datetime import datetime
 from collections import OrderedDict
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from io import BytesIO
 from pathlib import Path
 from threading import Lock, Thread
@@ -493,6 +493,47 @@ def tts_status(job_id: str):
     except LookupError as exc:
         return jsonify(ok=False, error=str(exc)), 404
     return jsonify(ok=True, **job.tts.public_dict())
+
+
+@app.get("/api/jobs/<job_id>/plain-text")
+def plain_text(job_id: str):
+    """词典精翻流程用：英文整段（空格拼接、无换行），复制给词典整段翻译。"""
+    try:
+        job = _job_or_error(job_id)
+    except LookupError as exc:
+        return str(exc), 404
+    if not job.rows:
+        return jsonify(ok=False, error="请先生成预览"), 400
+    return jsonify(
+        english=" ".join(row.english for row in job.rows if row.english),
+        chinese="".join(row.chinese for row in job.rows if row.chinese),
+    )
+
+
+@app.post("/api/jobs/<job_id>/import-chinese")
+def import_chinese(job_id: str):
+    """把 Claude 排版返回的对齐中文（块间空行分隔）回填到各字幕块。"""
+    try:
+        job = _job_or_error(job_id)
+    except LookupError as exc:
+        return jsonify(ok=False, error=str(exc)), 404
+    rows = job.rows or []
+    if not rows:
+        return jsonify(ok=False, error="请先完成识别或生成，再导入对齐中文"), 400
+    data = request.get_json(silent=True) or {}
+    chunks = core.split_aligned_chinese(str(data.get("text") or ""))
+    if len(chunks) != len(rows):
+        return jsonify(ok=False, error=(
+            f"段数不匹配：粘贴了 {len(chunks)} 段，当前字幕 {len(rows)} 条。"
+            "请检查复制是否完整（首尾段最容易丢），修好后重新粘贴。")), 400
+    job.rows = [replace(row, chinese=chunk) for row, chunk in zip(rows, chunks, strict=True)]
+    job.chinese_label = "欧路词典对照"
+    return jsonify(
+        ok=True,
+        rows=[row.public_dict() for row in job.rows],
+        count=len(job.rows),
+        notice="已导入词典对齐中文，下载 md / Excel 即为最终双语稿。",
+    )
 
 
 @app.get("/api/jobs/<job_id>/download/<kind>")

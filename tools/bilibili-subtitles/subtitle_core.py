@@ -451,6 +451,13 @@ def render_srt(rows: Sequence[BilingualRow]) -> str:
     return "\n\n".join(blocks) + "\n" if blocks else ""
 
 
+def split_aligned_chinese(text: str) -> list[str]:
+    """把「按字幕块空行分隔的对齐中文」拆回块列表：块内换行直接合并（中文无空格）。"""
+    chunks = re.split(r"\n\s*\n", text or "")
+    joined = ["".join(chunk.split()) for chunk in chunks]
+    return [chunk for chunk in joined if chunk]
+
+
 def render_markdown(
     title: str,
     source_url: str,

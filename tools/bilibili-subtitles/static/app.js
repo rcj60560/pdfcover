@@ -380,6 +380,54 @@ async function copyMarkdown() {
   window.setTimeout(() => { button.textContent = "复制 Markdown"; }, 1800);
 }
 
+async function copyEnglish() {
+  const button = $("copy-en");
+  try {
+    const response = await fetch(`/api/jobs/${state.jobId}/plain-text`);
+    if (!response.ok) throw new Error("读取失败");
+    const { english } = await response.json();
+    if (!english) throw new Error("无英文内容");
+    await navigator.clipboard.writeText(english);
+    button.textContent = "已复制 ✓ 丢词典吧";
+  } catch {
+    button.textContent = "复制失败";
+  }
+  window.setTimeout(() => { button.textContent = "📋 复制英文全文"; }, 2200);
+}
+
+function openImportDialog() {
+  if (!state.rows || !state.rows.length) {
+    setStatus("请先读取或识别出字幕，再导入对齐中文", "error");
+    return;
+  }
+  $("import-error").hidden = true;
+  $("import-text").value = "";
+  $("import-dialog").hidden = false;
+  $("import-text").focus();
+}
+
+function closeImportDialog() {
+  $("import-dialog").hidden = true;
+}
+
+async function submitImportChinese() {
+  const button = $("import-ch-submit");
+  const errorBox = $("import-error");
+  errorBox.hidden = true;
+  setBusy(button, true, "校验中…", "回填并校验");
+  try {
+    const data = await api(`/api/jobs/${state.jobId}/import-chinese`, { text: $("import-text").value });
+    renderRows(data);
+    closeImportDialog();
+    setStatus(`已回填 ${data.count} 段对齐中文，「下载 Markdown」即为最终双语稿`, "success");
+  } catch (error) {
+    errorBox.textContent = error.message;
+    errorBox.hidden = false;
+  } finally {
+    setBusy(button, false, "校验中…", "回填并校验");
+  }
+}
+
 function restoreForm() {
   const savedUrl = localStorage.getItem("bili-subtitle-url");
   const savedBrowser = localStorage.getItem("bili-subtitle-browser");
@@ -396,6 +444,10 @@ $("subtitle-search").addEventListener("input", filterRows);
 $("font-smaller").addEventListener("click", () => changeFont(-.1));
 $("font-larger").addEventListener("click", () => changeFont(.1));
 $("copy-md").addEventListener("click", copyMarkdown);
+$("copy-en").addEventListener("click", copyEnglish);
+$("import-ch-open").addEventListener("click", openImportDialog);
+$("import-ch-submit").addEventListener("click", submitImportChinese);
+$("import-ch-cancel").addEventListener("click", closeImportDialog);
 $("to-top").addEventListener("click", () => $("reader").scrollIntoView({ behavior: "smooth" }));
 $("tts-button").addEventListener("click", async () => {
   $("tts-panel").hidden = false;
