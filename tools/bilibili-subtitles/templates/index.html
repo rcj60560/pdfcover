@@ -167,13 +167,16 @@
         <aside class="align-panel" aria-label="词典中文粘贴区">
           <h3>词典中文粘贴区</h3>
           <p class="align-hint">
-            点「📋 复制英文全文」丢给词典翻译，把返回的<b>整段中文</b>直接粘到这里 →
-            保存后对 Claude 说「排版」→ 完成后回来点「⟳ 应用排版结果」。
+            点「📋 复制英文全文」丢给词典翻译，把返回的<b>整段中文</b>直接粘到这里，
+            点「🤖 一键排版」——本机自动切分对齐回填，全程不用离开页面。
           </p>
           <textarea id="raw-chinese-text" rows="14" placeholder="把词典翻译的整段中文直接粘贴到这里…"></textarea>
           <div class="align-actions">
-            <button class="primary" id="save-raw-ch" type="button">保存，交给 Claude 排版</button>
-            <button id="apply-align" type="button">⟳ 应用排版结果</button>
+            <button class="primary" id="auto-align" type="button">🤖 一键排版</button>
+          </div>
+          <div class="align-actions secondary">
+            <button id="save-raw-ch" type="button" title="排版失败时的兜底：保存材料，到 Claude Code 里说「排版」">保存，交给 Claude 排版</button>
+            <button id="apply-align" type="button" title="兜底排版完成后取回结果">⟳ 应用排版结果</button>
           </div>
           <p class="align-status" id="align-status" hidden></p>
         </aside>

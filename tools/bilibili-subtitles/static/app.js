@@ -402,6 +402,21 @@ function alignStatus(message, kind) {
   status.hidden = false;
 }
 
+async function autoAlign() {
+  const button = $("auto-align");
+  setBusy(button, true, "排版中…约 1-2 分钟", "🤖 一键排版");
+  alignStatus("排版中：本机模型正在切分对齐，请勿关闭页面…", "ok");
+  try {
+    const data = await api(`/api/jobs/${state.jobId}/auto-align`, { text: $("raw-chinese-text").value });
+    renderRows(data);
+    alignStatus(`一键排版完成：已回填 ${data.count} 块中文，点「下载 Markdown」即为最终双语稿。`, "ok");
+  } catch (error) {
+    alignStatus(`${error.message}\n可重试，或点「保存，交给 Claude 排版」走对话兜底。`, "err");
+  } finally {
+    setBusy(button, false, "排版中…约 1-2 分钟", "🤖 一键排版");
+  }
+}
+
 async function saveRawChinese() {
   const button = $("save-raw-ch");
   setBusy(button, true, "保存中…", "保存，交给 Claude 排版");
@@ -453,6 +468,7 @@ $("font-smaller").addEventListener("click", () => changeFont(-.1));
 $("font-larger").addEventListener("click", () => changeFont(.1));
 $("copy-md").addEventListener("click", copyMarkdown);
 $("copy-en").addEventListener("click", copyEnglish);
+$("auto-align").addEventListener("click", autoAlign);
 $("save-raw-ch").addEventListener("click", saveRawChinese);
 $("apply-align").addEventListener("click", applyAlignedResult);
 $("to-top").addEventListener("click", () => $("reader").scrollIntoView({ behavior: "smooth" }));

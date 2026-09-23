@@ -19,6 +19,7 @@ from flask import Flask, jsonify, render_template, request, send_file
 import direct_generate
 import subtitle_core as core
 import tts_bridge
+import alignment_agent
 from extractor import ExtractedVideo, ExtractionError, extract_video
 from xlsx_export import build_xlsx
 
@@ -26,6 +27,7 @@ from xlsx_export import build_xlsx
 TRANSCRIBE_PIPELINE = direct_generate.generate_rows_from_audio
 TRANSLATE_ROWS = direct_generate.fill_missing_languages
 TTS_SYNTHESIZE = tts_bridge.synthesize_chunks
+RUN_ALIGN = alignment_agent.run_claude_align
 
 WHISPER_INSTALL_HINT = (
     "缺少语音识别依赖，请先运行：python -m pip install -r tools/bilibili-subtitles/requirements-whisper.txt"
@@ -586,6 +588,41 @@ def job_rows(job_id: str):
     if not job.rows:
         return jsonify(ok=False, error="请先生成预览"), 400
     return jsonify(rows=[row.public_dict() for row in job.rows], count=len(job.rows))
+
+
+@app.post("/api/jobs/<job_id>/auto-align")
+def auto_align(job_id: str):
+    """页面一键排版：无头 claude 切分 → 段数校验 → 回填，全程不离开页面。"""
+    try:
+        job = _job_or_error(job_id)
+    except LookupError as exc:
+        return jsonify(ok=False, error=str(exc)), 404
+    rows = job.rows or []
+    if not rows:
+        return jsonify(ok=False, error="请先完成识别或生成，再一键排版"), 400
+    data = request.get_json(silent=True) or {}
+    text = str(data.get("text") or "").strip()
+    if not text:
+        return jsonify(ok=False, error="粘贴内容为空，请先复制词典译文"), 400
+    job.raw_chinese = text  # 同时留底，CC 兜底通道（align/latest）可用
+    prompt = alignment_agent.build_align_prompt(rows, text)
+    try:
+        output = RUN_ALIGN(prompt)
+    except RuntimeError as exc:
+        return jsonify(ok=False, error=str(exc)), 400
+    chunks = core.split_aligned_chinese(output)
+    if len(chunks) != len(rows):
+        return jsonify(ok=False, error=(
+            f"切分段数不匹配：模型返回 {len(chunks)} 段，当前字幕 {len(rows)} 条。"
+            "请重试一次；仍失败可改用「保存，交给 Claude 排版」走对话排版。")), 400
+    job.rows = [replace(row, chinese=chunk) for row, chunk in zip(rows, chunks, strict=True)]
+    job.chinese_label = "欧路词典对照"
+    return jsonify(
+        ok=True,
+        rows=[row.public_dict() for row in job.rows],
+        count=len(job.rows),
+        notice="一键排版完成，「下载 Markdown」即为最终双语稿。",
+    )
 
 
 @app.get("/api/jobs/<job_id>/download/<kind>")

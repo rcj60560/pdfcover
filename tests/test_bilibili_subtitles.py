@@ -1028,6 +1028,65 @@ def test_rows_endpoint_returns_current_state_for_refresh():
     assert [row["chinese"] for row in after["rows"]] == ["你好呀。", "再见啦。"]
 
 
+def test_build_align_prompt_contains_blocks_and_rules():
+    import alignment_agent
+
+    rows = [
+        core.BilingualRow(0, 2, "Hello there.", ""),
+        core.BilingualRow(2, 4, "Bye now.", ""),
+    ]
+    prompt = alignment_agent.build_align_prompt(rows, "你好呀。再见啦。")
+    assert "2 个" in prompt or "共 2" in prompt
+    assert "Hello there." in prompt and "Bye now." in prompt
+    assert "你好呀。再见啦。" in prompt
+    assert "空一行" in prompt  # 输出格式规则必须在提示里
+
+
+def test_auto_align_runs_agent_and_fills_rows(monkeypatch):
+    """页面一键排版:调本机 claude 无头切分,段数校验后回填,响应即渲染数据。"""
+    web = _load_web()
+    job_id = web.jobs.put(_job_with_rows(web))
+
+    def fake_align(prompt, timeout=None):
+        assert "Hello there." in prompt
+        return "你好呀。\n\n再见啦。"
+
+    monkeypatch.setattr(web, "RUN_ALIGN", fake_align)
+    client = web.app.test_client()
+
+    response = client.post(f"/api/jobs/{job_id}/auto-align", json={"text": "你好呀。再见啦。"})
+    assert response.status_code == 200
+    body = response.get_json()
+    assert body["ok"] and body["count"] == 2
+    assert [row["chinese"] for row in body["rows"]] == ["你好呀。", "再见啦。"]
+    # 原始中文同时落盘到任务上,CC 兜底通道(align/latest)仍可用
+    assert web.jobs.get(job_id).raw_chinese == "你好呀。再见啦。"
+
+    markdown = client.get(f"/api/jobs/{job_id}/download/md")
+    assert "欧路词典对照" in markdown.get_data(as_text=True)
+
+
+def test_auto_align_surfaces_count_mismatch_and_agent_error(monkeypatch):
+    web = _load_web()
+    job_id = web.jobs.put(_job_with_rows(web))
+    client = web.app.test_client()
+
+    monkeypatch.setattr(web, "RUN_ALIGN", lambda prompt, timeout=None: "只有一段。")
+    mismatch = client.post(f"/api/jobs/{job_id}/auto-align", json={"text": "你好呀。再见啦。"})
+    assert mismatch.status_code == 400
+    assert "1" in mismatch.get_json()["error"] and "2" in mismatch.get_json()["error"]
+
+    def broken(prompt, timeout=None):
+        raise RuntimeError("claude 命令不可用，请确认已安装并在 PATH")
+
+    monkeypatch.setattr(web, "RUN_ALIGN", broken)
+    failed = client.post(f"/api/jobs/{job_id}/auto-align", json={"text": "你好呀。再见啦。"})
+    assert failed.status_code == 400
+    assert "claude" in failed.get_json()["error"]
+    # 失败不污染任务:行内容保持原样
+    assert web.jobs.get(job_id).chinese_label == "待词典对照"
+
+
 def test_generate_cli_keeps_outputs_when_translation_fails(monkeypatch, tmp_path):
     import direct_generate
 
