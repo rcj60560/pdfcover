@@ -61,6 +61,7 @@ class Job:
     transcribe: TaskState = field(default_factory=TaskState)
     transcribe_thread: Thread | None = None
     translate: bool = True  # 语音识别后是否机器翻译；False = 仅拉英文，中文待词典对照
+    raw_chinese: str = ""  # 词典精翻：右侧粘贴区保存的原始整段中文，等 Claude 排版
     tts: TaskState = field(default_factory=TaskState)
     tts_thread: Thread | None = None
     mp3_bytes: bytes | None = None
@@ -88,6 +89,14 @@ class JobStore:
             if job is not None:
                 self._items.move_to_end(key)
             return job
+
+    def latest(self, predicate) -> tuple[str, Job] | tuple[None, None]:
+        """最近访问过且满足条件的任务（含 key），供 Claude 捞待排版材料。"""
+        with self._lock:
+            for key, job in reversed(self._items.items()):
+                if predicate(job):
+                    return key, job
+        return None, None
 
 
 app = Flask(__name__)
@@ -534,6 +543,49 @@ def import_chinese(job_id: str):
         count=len(job.rows),
         notice="已导入词典对齐中文，下载 md / Excel 即为最终双语稿。",
     )
+
+
+@app.post("/api/jobs/<job_id>/raw-chinese")
+def save_raw_chinese(job_id: str):
+    """右侧粘贴区：保存词典整段原始中文，等 Claude 排版回填。"""
+    try:
+        job = _job_or_error(job_id)
+    except LookupError as exc:
+        return jsonify(ok=False, error=str(exc)), 404
+    data = request.get_json(silent=True) or {}
+    text = str(data.get("text") or "").strip()
+    if not text:
+        return jsonify(ok=False, error="粘贴内容为空，请先复制词典译文"), 400
+    job.raw_chinese = text
+    return jsonify(ok=True, saved_chars=len(text))
+
+
+@app.get("/api/align/latest")
+def align_latest():
+    """Claude 捞最近一个待排版任务：英文块 + 词典原始中文（本地页面流程）。"""
+    key, job = jobs.latest(lambda item: bool(item.raw_chinese.strip()))
+    if not key or job is None or not job.rows:
+        return jsonify(ok=False, error="当前没有待排版的任务（需先保存词典中文）"), 404
+    return jsonify(
+        job_id=key,
+        title=job.video.title,
+        source_url=job.video.source_url,
+        count=len(job.rows),
+        rows=[row.public_dict() for row in job.rows],
+        raw_chinese=job.raw_chinese,
+    )
+
+
+@app.get("/api/jobs/<job_id>/rows")
+def job_rows(job_id: str):
+    """「应用排版结果」刷新：取当前任务的最新双语行。"""
+    try:
+        job = _job_or_error(job_id)
+    except LookupError as exc:
+        return str(exc), 404
+    if not job.rows:
+        return jsonify(ok=False, error="请先生成预览"), 400
+    return jsonify(rows=[row.public_dict() for row in job.rows], count=len(job.rows))
 
 
 @app.get("/api/jobs/<job_id>/download/<kind>")

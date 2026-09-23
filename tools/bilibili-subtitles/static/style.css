@@ -195,23 +195,28 @@ footer { margin-top: 42px; padding: 16px 2px 0; border-top: 1px solid rgba(80,66
   .cue-num { display: inline; margin: 0; }
 }
 
-/* 词典精翻：导入对齐中文弹窗 */
-.import-dialog {
-  position: fixed; inset: 0; z-index: 50; display: flex; align-items: center; justify-content: center;
-  background: rgba(35, 28, 54, 0.45); padding: 20px;
+/* 词典精翻：阅读区分栏——左侧字幕，右侧词典中文粘贴区 */
+.reader-body {
+  display: grid; grid-template-columns: minmax(0, 1fr) 380px; gap: 18px; align-items: start;
 }
-.import-dialog[hidden] { display: none; }
-.import-panel {
-  width: min(720px, 100%); max-height: 85vh; overflow: auto;
-  background: #fff; border-radius: 16px; padding: 22px 24px;
-  box-shadow: 0 18px 50px rgba(35, 28, 54, 0.35);
+.align-panel {
+  position: sticky; top: 16px; padding: 18px 20px;
+  background: #f6f3fd; border: 1px dashed #c9bdf0; border-radius: 16px;
 }
-.import-panel h3 { margin: 0 0 8px; }
-.import-hint { margin: 0 0 12px; color: #4d4463; font-size: 13px; }
-#import-text {
-  width: 100%; resize: vertical; padding: 12px; border: 1px solid #c9bdf0; border-radius: 10px;
+.align-panel h3 { margin: 0 0 8px; font-size: 16px; }
+.align-hint { margin: 0 0 12px; color: #4d4463; font-size: 13px; line-height: 1.6; }
+#raw-chinese-text {
+  width: 100%; resize: vertical; min-height: 220px; padding: 12px;
+  border: 1px solid #c9bdf0; border-radius: 10px; background: #fff;
   font-size: 14px; line-height: 1.7; font-family: inherit; box-sizing: border-box;
 }
-#import-text:focus { outline: 2px solid #6a5acd; }
-.import-error { color: #b3261e; font-size: 13px; white-space: pre-wrap; }
-.import-actions { display: flex; gap: 10px; justify-content: flex-end; margin-top: 14px; }
+#raw-chinese-text:focus { outline: 2px solid #6a5acd; }
+.align-actions { display: flex; gap: 10px; flex-wrap: wrap; margin-top: 12px; }
+.align-actions .primary { border: none; padding: 9px 14px; border-radius: 10px; cursor: pointer; }
+.align-status { margin: 10px 0 0; font-size: 13px; line-height: 1.6; white-space: pre-wrap; }
+.align-status.ok { color: #1c7a3d; }
+.align-status.err { color: #b3261e; }
+@media (max-width: 1080px) {
+  .reader-body { grid-template-columns: 1fr; }
+  .align-panel { position: static; }
+}

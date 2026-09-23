@@ -976,6 +976,58 @@ def test_import_chinese_rejects_count_mismatch():
     assert "1" in error and "2" in error
 
 
+def test_raw_chinese_save_and_align_latest_material():
+    """右侧粘贴区:保存词典原始中文;Claude 从 align/latest 取最近待排版任务。"""
+    web = _load_web()
+    job_id = web.jobs.put(_job_with_rows(web))
+    client = web.app.test_client()
+
+    saved = client.post(f"/api/jobs/{job_id}/raw-chinese", json={"text": "你好呀。再见啦。"})
+    assert saved.status_code == 200 and saved.get_json()["ok"]
+
+    material = client.get("/api/align/latest")
+    assert material.status_code == 200
+    body = material.get_json()
+    assert body["job_id"] == job_id
+    assert body["count"] == 2
+    assert [row["english"] for row in body["rows"]] == ["Hello there.", "Bye now."]
+    assert body["raw_chinese"] == "你好呀。再见啦。"
+
+
+def test_align_latest_prefers_most_recent_and_skips_empty():
+    """多个任务时取最近保存过原始中文的那个;没有待排版任务时 404。"""
+    web = _load_web()
+    client = web.app.test_client()
+
+    empty = client.get("/api/align/latest")
+    assert empty.status_code == 404
+
+    first = web.jobs.put(_job_with_rows(web))
+    client.post(f"/api/jobs/{first}/raw-chinese", json={"text": "第一份。"})
+
+    second = web.jobs.put(_job_with_rows(web))
+    client.post(f"/api/jobs/{second}/raw-chinese", json={"text": "第二份。"})
+
+    body = client.get("/api/align/latest").get_json()
+    assert body["job_id"] == second and body["raw_chinese"] == "第二份。"
+
+
+def test_rows_endpoint_returns_current_state_for_refresh():
+    """「应用排版结果」刷新:导入回填后,rows 端点能取到双语行。"""
+    web = _load_web()
+    job_id = web.jobs.put(_job_with_rows(web))
+    client = web.app.test_client()
+
+    before = client.get(f"/api/jobs/{job_id}/rows")
+    assert before.status_code == 200
+    assert before.get_json()["count"] == 2
+    assert all(row["chinese"] == "" for row in before.get_json()["rows"])
+
+    client.post(f"/api/jobs/{job_id}/import-chinese", json={"text": "你好呀。\n\n再见啦。"})
+    after = client.get(f"/api/jobs/{job_id}/rows").get_json()
+    assert [row["chinese"] for row in after["rows"]] == ["你好呀。", "再见啦。"]
+
+
 def test_generate_cli_keeps_outputs_when_translation_fails(monkeypatch, tmp_path):
     import direct_generate
 

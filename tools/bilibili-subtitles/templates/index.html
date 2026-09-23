@@ -158,36 +158,32 @@
         </div>
         <button class="copy-button" id="copy-md" type="button">复制 Markdown</button>
         <button class="copy-button" id="copy-en" type="button" title="复制不换行英文整段，直接丢给词典整段翻译">📋 复制英文全文</button>
-        <button class="copy-button" id="import-ch-open" type="button" title="粘贴 Claude 排版返回的对齐中文（块间空行分隔），回填后下载即为双语稿">📥 导入对齐中文</button>
       </div>
-      <div id="subtitle-list" class="subtitle-list"></div>
-      <div id="no-match" class="no-match" hidden>没有匹配的字幕</div>
+      <div class="reader-body">
+        <div class="reader-main">
+          <div id="subtitle-list" class="subtitle-list"></div>
+          <div id="no-match" class="no-match" hidden>没有匹配的字幕</div>
+        </div>
+        <aside class="align-panel" aria-label="词典中文粘贴区">
+          <h3>词典中文粘贴区</h3>
+          <p class="align-hint">
+            点「📋 复制英文全文」丢给词典翻译，把返回的<b>整段中文</b>直接粘到这里 →
+            保存后对 Claude 说「排版」→ 完成后回来点「⟳ 应用排版结果」。
+          </p>
+          <textarea id="raw-chinese-text" rows="14" placeholder="把词典翻译的整段中文直接粘贴到这里…"></textarea>
+          <div class="align-actions">
+            <button class="primary" id="save-raw-ch" type="button">保存，交给 Claude 排版</button>
+            <button id="apply-align" type="button">⟳ 应用排版结果</button>
+          </div>
+          <p class="align-status" id="align-status" hidden></p>
+        </aside>
+      </div>
       <button id="to-top" class="to-top" type="button">回到顶部 ↑</button>
     </section>
 
     <footer>
       <strong>说明</strong> · 优先读取视频自带/AI 字幕轨；无字幕轨的英文口播视频可用语音识别（临时下载音频，识别完自动删除，不下载视频）。画面烧录字幕不做 OCR；机器翻译供学习对照。
     </footer>
-
-    <div class="import-dialog" id="import-dialog" hidden>
-      <div class="import-panel">
-        <h3>导入对齐中文</h3>
-        <p class="import-hint">
-          粘贴 Claude 排版返回的对齐中文：<strong>块与块之间空一行</strong>，块数须与当前字幕条数一致，
-          页面会校验后逐块回填；成功后「下载 Markdown」即为双语稿。
-        </p>
-        <textarea id="import-text" rows="10" placeholder="第一块的中文…
-
-第二块的中文…
-
-第三块的中文…"></textarea>
-        <p class="import-error" id="import-error" hidden></p>
-        <div class="import-actions">
-          <button class="primary" id="import-ch-submit" type="button">回填并校验</button>
-          <button id="import-ch-cancel" type="button">取消</button>
-        </div>
-      </div>
-    </div>
   </main>
   <script src="{{ url_for('static', filename='app.js') }}" defer></script>
 </body>

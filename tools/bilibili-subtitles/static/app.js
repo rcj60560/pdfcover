@@ -395,36 +395,44 @@ async function copyEnglish() {
   window.setTimeout(() => { button.textContent = "📋 复制英文全文"; }, 2200);
 }
 
-function openImportDialog() {
-  if (!state.rows || !state.rows.length) {
-    setStatus("请先读取或识别出字幕，再导入对齐中文", "error");
-    return;
-  }
-  $("import-error").hidden = true;
-  $("import-text").value = "";
-  $("import-dialog").hidden = false;
-  $("import-text").focus();
+function alignStatus(message, kind) {
+  const status = $("align-status");
+  status.textContent = message;
+  status.className = "align-status " + kind;
+  status.hidden = false;
 }
 
-function closeImportDialog() {
-  $("import-dialog").hidden = true;
-}
-
-async function submitImportChinese() {
-  const button = $("import-ch-submit");
-  const errorBox = $("import-error");
-  errorBox.hidden = true;
-  setBusy(button, true, "校验中…", "回填并校验");
+async function saveRawChinese() {
+  const button = $("save-raw-ch");
+  setBusy(button, true, "保存中…", "保存，交给 Claude 排版");
   try {
-    const data = await api(`/api/jobs/${state.jobId}/import-chinese`, { text: $("import-text").value });
-    renderRows(data);
-    closeImportDialog();
-    setStatus(`已回填 ${data.count} 段对齐中文，「下载 Markdown」即为最终双语稿`, "success");
+    const data = await api(`/api/jobs/${state.jobId}/raw-chinese`, { text: $("raw-chinese-text").value });
+    alignStatus(`已保存 ${data.saved_chars} 字。现在对 Claude 说「排版」，完成后回来点「⟳ 应用排版结果」。`, "ok");
   } catch (error) {
-    errorBox.textContent = error.message;
-    errorBox.hidden = false;
+    alignStatus(error.message, "err");
   } finally {
-    setBusy(button, false, "校验中…", "回填并校验");
+    setBusy(button, false, "保存中…", "保存，交给 Claude 排版");
+  }
+}
+
+async function applyAlignedResult() {
+  const button = $("apply-align");
+  setBusy(button, true, "刷新中…", "⟳ 应用排版结果");
+  try {
+    const response = await fetch(`/api/jobs/${state.jobId}/rows`);
+    if (!response.ok) throw new Error("读取失败");
+    const data = await response.json();
+    renderRows(data);
+    const filled = data.rows.filter((row) => row.chinese).length;
+    if (!filled) {
+      alignStatus("还没有排版结果——先保存词典中文，再让 Claude 排版。", "err");
+    } else {
+      alignStatus(`已回填 ${filled}/${data.count} 块中文${filled === data.count ? "" : "（尚有缺块）"}；点「下载 Markdown」即为最终双语稿。`, "ok");
+    }
+  } catch (error) {
+    alignStatus(error.message, "err");
+  } finally {
+    setBusy(button, false, "刷新中…", "⟳ 应用排版结果");
   }
 }
 
@@ -445,9 +453,8 @@ $("font-smaller").addEventListener("click", () => changeFont(-.1));
 $("font-larger").addEventListener("click", () => changeFont(.1));
 $("copy-md").addEventListener("click", copyMarkdown);
 $("copy-en").addEventListener("click", copyEnglish);
-$("import-ch-open").addEventListener("click", openImportDialog);
-$("import-ch-submit").addEventListener("click", submitImportChinese);
-$("import-ch-cancel").addEventListener("click", closeImportDialog);
+$("save-raw-ch").addEventListener("click", saveRawChinese);
+$("apply-align").addEventListener("click", applyAlignedResult);
 $("to-top").addEventListener("click", () => $("reader").scrollIntoView({ behavior: "smooth" }));
 $("tts-button").addEventListener("click", async () => {
   $("tts-panel").hidden = false;
