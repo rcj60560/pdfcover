@@ -2,6 +2,7 @@
 import {
   newState, answerYes, answerNo, buildQueue,
   mergeImport, loadState, saveState, exportPayload, logJudge, summarize,
+  STORAGE_KEY,
 } from "./core.js";
 
 const SETTINGS_KEY = "vocab-review-settings-v1";
@@ -318,6 +319,14 @@ $("exportBtn").addEventListener("click", () => {
   a.click();
   a.remove();
   setTimeout(() => URL.revokeObjectURL(url), 4000);
+});
+
+$("resetBtn").addEventListener("click", () => {
+  const ok = window.confirm(
+    "确定重置吗?\n\n全部复习状态与统计将被清空(词池不受影响),从第一天重新开始。\n建议先「导出进度」留一份备份。");
+  if (!ok) return;
+  try { localStorage.removeItem(STORAGE_KEY); } catch { /* 隐私模式 */ }
+  location.reload();
 });
 
 $("importFile").addEventListener("change", () => {
