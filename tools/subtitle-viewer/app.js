@@ -76,7 +76,7 @@ function renderUnits(docs, book) {
       gridCard(location.pathname + "?doc=" + encodeURIComponent(d.path),
         d.title, `${d.count} 条 · ${formatMs(d.duration * 1000)}`)),
   ];
-  $("#list").innerHTML = `<div class="grid">` + cards.join("") + `</div>`;
+  $("#list").innerHTML = `<div class="grid list">` + cards.join("") + `</div>`;
 }
 
 function renderRecordings(docs, book, unit) {          // 三级:Unit → Recording 网格
@@ -86,7 +86,7 @@ function renderRecordings(docs, book, unit) {          // 三级:Unit → Record
   $("#back").hidden = false;
   $("#back").textContent = "‹ " + book;
   $("#list").innerHTML = items.length
-    ? `<div class="grid">` + items.map((d) =>
+    ? `<div class="grid list">` + items.map((d) =>
         gridCard(location.pathname + "?doc=" + encodeURIComponent(d.path),
           d.title, `${d.count} 条 · ${formatMs(d.duration * 1000)}`)).join("") + `</div>`
     : `<p class="empty">这个 Unit 还没有字幕。</p>`;

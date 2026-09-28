@@ -40,6 +40,13 @@ body {
 /* 两级网格 */
 #list .grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px; }
 @media (min-width: 640px) { #list .grid { grid-template-columns: repeat(3, 1fr); } }
+/* 书内/单元内条目:单列一行一条(顶层书目网格仍为三列) */
+#list .grid.list { grid-template-columns: 1fr; }
+#list .grid.list .card {
+  min-height: 0; flex-direction: row; justify-content: space-between;
+  align-items: baseline; gap: 12px;
+}
+#list .grid.list .card-meta { margin-top: 0; white-space: nowrap; }
 .card {
   display: flex; flex-direction: column; gap: 8px; min-height: 96px;
   padding: 14px; border-radius: 12px;
