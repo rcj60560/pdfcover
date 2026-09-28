@@ -182,6 +182,9 @@ function hideCardArea() {
 function showDone() {
   hideCardArea();
   $("doneCount").textContent = `复习 ${reviewed} · 新词 ${fresh}`;
+  // 词池里还有未发出的新词时才提供「继续复习」
+  const issued = Object.keys(box.states).length;
+  $("doneMore").hidden = vocab.words.length - issued <= 0;
   $("done").hidden = false;
 }
 
@@ -245,10 +248,12 @@ function closeStats() {
 }
 
 /* ---------- 队列 ---------- */
+let extra = 0;   // 「继续复习」在会话内追加的新词额度(刷新即回到每日上限)
+
 function rebuildQueue() {
   const now = Date.now();
   const words = vocab.words.map((x) => x.w);
-  const { queue: q, newToday } = buildQueue(words, box.states, now, settings.dailyLimit, box.meta);
+  const { queue: q, newToday } = buildQueue(words, box.states, now, settings.dailyLimit + extra, box.meta);
   queue = q;
   judged = 0; reviewed = 0; fresh = 0;
   classified.clear();
@@ -292,6 +297,11 @@ $("nextBtn").addEventListener("click", returnNow);
 $("chartBtn").addEventListener("click", openStats);
 $("statsClose").addEventListener("click", closeStats);
 $("doneStats").addEventListener("click", openStats);
+$("doneMore").addEventListener("click", () => {
+  extra += settings.dailyLimit;   // 追加一批(数量=每日上限);当日发放数照常落库,明日不超发
+  rebuildQueue();
+  render();
+});
 $("retry").addEventListener("click", () => location.reload());
 
 /* ⚙ 设置抽屉 */
