@@ -75,6 +75,17 @@ def pick_sentences(variants: set[str], sentences: list[tuple[str, str]], limit: 
     return [{"en": en, "from": src} for _, en, src in hits[:limit]]
 
 
+def entry_for(lemma: str, entries: dict, variants: set[str], counts: dict) -> tuple[dict | None, str]:
+    """词条与卡面词:优先原形自身词条;原形无词条(entries 只装语料 token,如 series→sery)
+    时退回语料里计数最多的有词条变体(平局取字典序,保证跨次构建稳定)。"""
+    if entries.get(lemma):
+        return entries[lemma], lemma
+    for v in sorted(variants, key=lambda v: (-counts.get(v, 0), v)):
+        if entries.get(v):
+            return entries[v], v
+    return None, lemma
+
+
 def build(src_root: Path, ecdict_path: Path, level: str = "gk") -> dict:
     import datetime
     import ecdict as ecdict_mod
@@ -106,16 +117,21 @@ def build(src_root: Path, ecdict_path: Path, level: str = "gk") -> dict:
         lemma_variants.setdefault(lemmas[token], set()).add(token)
 
     words = []
+    seen: set[str] = set()
     for lemma in sorted(lemma_counts, key=lambda w: -lemma_counts[w]):
-        entry = entries.get(lemma) or entries.get(next(iter(lemma_variants[lemma])))
+        entry, display = entry_for(lemma, entries, lemma_variants[lemma], counts)
         kind = classify(entry, level)
+        if len(lemma) <= 3 and kind != "known":
+            stats["dropped"] += 1  # 短碎片词(don/t/s 之类残片)不可能成为卡片
+            continue
         if kind == "drop" or (entry is None and lemma_counts[lemma] < 2):
             stats["dropped"] += 1
             continue
         stats[kind] += 1
-        if kind == "candidate":
+        if kind == "candidate" and display not in seen:
+            seen.add(display)  # 不同原形可能落到同一展示词(gather/gathering→gathering),只出一张卡
             words.append({
-                "w": lemma,
+                "w": display,
                 "phon": entry.get("phon", "") if entry else "",
                 "def": (entry.get("translation", "") if entry else "").replace("\n", "; "),
                 "tags": entry.get("tag", "") if entry else "",

@@ -1,7 +1,7 @@
-/** vocab-review 复习页:加载词库 → 建队列 → 卡片流(翻面/判定/发音)+ 设置抽屉(每日上限/导出/导入)。纯逻辑在 core.js。 */
+/** vocab-review 复习页:加载词库 → 建队列 → 卡片流(直显/判定/发音/回看)+ 统计报表 + 设置抽屉。纯逻辑在 core.js。 */
 import {
   newState, answerYes, answerNo, buildQueue,
-  mergeImport, loadState, saveState, exportPayload,
+  mergeImport, loadState, saveState, exportPayload, logJudge, summarize,
 } from "./core.js";
 
 const SETTINGS_KEY = "vocab-review-settings-v1";
@@ -16,7 +16,9 @@ let queue = [];              // 今日队列(队首 = 当前卡)
 let judged = 0;              // 本次会话已判定张数(进度条分子)
 let reviewed = 0;            // 本次会话判定的复习张数
 let fresh = 0;               // 本次会话判定的新词张数
-let revealed = false;        // 当前卡是否已翻面
+let history = [];            // 本会话已判定的词(按判定顺序,供回看)
+let viewIndex = 0;           // 0 = 当前卡;i > 0 = 只读回看倒数第 i 张
+let statsOpen = false;       // 统计报表是否打开
 const classified = new Set(); // 已计数的词(不认识的卡重现时不重复计数)
 let toastTimer = 0;
 
@@ -97,25 +99,13 @@ function fillSentence(p, text, word) {
 }
 
 function renderCard() {
-  revealed = false;
-  const w = queue[0];
+  const readonly = viewIndex > 0;
+  const w = readonly ? history[history.length - viewIndex] : queue[0];
   const item = vocabIndex.get(w) || { phon: "", def: "", tags: "", sents: [] };
-  $("src").textContent = hasState(w) ? "复习 · 到期重现" : "生词候选 · 来自词池";
+  $("src").textContent = readonly ? "回看 · 只读,不计分"
+    : (hasState(w) ? "复习 · 到期重现" : "生词候选 · 来自词池");
   $("word").textContent = w;
-  $("phon").textContent = item.phon || "";
-  $("faceFront").hidden = false;
-  $("faceBack").hidden = true;
-  $("flash").hidden = false;
-  $("judge").hidden = false;
-  $("judge").classList.remove("show");
-  $("hint").hidden = true;
-}
-
-function renderBack() {
-  const w = queue[0];
-  const item = vocabIndex.get(w) || { phon: "", def: "", tags: "", sents: [] };
-  $("wordBack").textContent = w;
-  $("phonBack").textContent = [item.phon, item.tags].filter(Boolean).join(" · ");
+  $("phon").textContent = [item.phon, item.tags].filter(Boolean).join(" · ");
   $("def").textContent = item.def || "";
   const exs = $("exs");
   exs.textContent = "";
@@ -130,31 +120,43 @@ function renderBack() {
     ex.append(p, from);
     exs.append(ex);
   }
+  // 回看导航
+  $("nav").hidden = history.length === 0;
+  $("prevBtn").disabled = viewIndex >= history.length;
+  $("nextBtn").disabled = viewIndex === 0;
+  $("navInfo").textContent = readonly ? `回看 ${viewIndex}/${history.length}` : "";
+  // 判定只在当前卡可用
+  $("btnNo").disabled = readonly;
+  $("btnYes").disabled = readonly;
 }
 
 /* ---------- 卡片流 ---------- */
-function reveal() {
-  if (revealed || !queue.length) return;
-  revealed = true;
-  renderBack();
-  $("faceFront").hidden = true;
-  $("faceBack").hidden = false;
-  $("judge").classList.add("show");
-  $("hint").hidden = false;
-}
-
 function judge(yes) {
-  if (!revealed || !queue.length) return;
+  if (viewIndex !== 0 || !queue.length) return;
   const w = queue.shift(); // 当前卡出队
   const now = Date.now();
   if (!classified.has(w)) { classified.add(w); hasState(w) ? reviewed++ : fresh++; }
+  box.meta = logJudge(box.meta, now, yes); // 每次判定记账(当日/累计/趋势)
   const next = (yes ? answerYes : answerNo)(box.states[w] || newState(), now);
   box.states[w] = next;
   saveState(box); // 判定即落盘
   if (next.g) toast(`🎓 ${w} 毕业!`); // 队列里的词必非毕业态,next.g 即刚毕业
   if (!yes) queue.splice(Math.min(10, queue.length), 0, w); // 隔 10 张重现,至多插到队尾
+  history.push(w);
   judged++;
   render();
+}
+
+function lookBack() {          // ◀ 只读回看上一张
+  if (viewIndex >= history.length) return;
+  viewIndex++;
+  renderCard();
+}
+
+function returnNow() {         // ▶ 返回当前卡
+  if (viewIndex === 0) return;
+  viewIndex = 0;
+  renderCard();
 }
 
 function render() {
@@ -163,13 +165,16 @@ function render() {
   $("done").hidden = true;
   $("error").hidden = true;
   if (!queue.length) { showDone(); return; }
+  $("flash").hidden = false;
+  $("judge").hidden = false;
+  $("hint").hidden = false;
   renderCard();
 }
 
 function hideCardArea() {
   $("flash").hidden = true;
   $("judge").hidden = true;
-  $("judge").classList.remove("show");
+  $("nav").hidden = true;
   $("hint").hidden = true;
 }
 
@@ -184,6 +189,60 @@ function showError() {
   $("error").hidden = false;
 }
 
+/* ---------- 统计报表 ---------- */
+function renderChart(trend) {
+  const chart = $("svChart");
+  chart.textContent = "";
+  const H = 72; // 最大柱高(px)
+  const max = Math.max(1, ...trend.map((d) => d.y + d.n));
+  for (const d of trend) {
+    const col = document.createElement("div");
+    col.className = "col";
+    const segs = [];
+    for (const [cls, v] of [["yes", d.y], ["no", d.n]]) {
+      if (!v) continue;
+      const seg = document.createElement("i");
+      seg.className = `seg ${cls}`;
+      seg.style.height = `${Math.max(3, Math.round((v / max) * H))}px`;
+      segs.push(seg);
+    }
+    if (segs.length) segs[0].classList.add("top"); // 数据端圆角
+    const label = document.createElement("span");
+    label.className = "col-label";
+    const [, mm, dd] = d.key.split("-");
+    label.textContent = `${Number(mm)}/${Number(dd)}`;
+    col.title = `${d.key}:认识 ${d.y} · 不认识 ${d.n}`;
+    col.setAttribute("aria-label", `${Number(mm)}月${Number(dd)}日:认识 ${d.y},不认识 ${d.n}`);
+    col.append(...segs, label);
+    chart.append(col);
+  }
+}
+
+function openStats() {
+  if (!vocab || !box) return;
+  statsOpen = true;
+  hideCardArea();
+  $("done").hidden = true;
+  const s = summarize(vocab.words.map((x) => x.w), box.states, box.meta, vocab.stats);
+  $("svTotal").textContent = fmt(s.total);
+  $("svGrad").textContent = fmt(s.graduated);
+  $("svLearn").textContent = fmt(s.learning);
+  $("svNew").textContent = fmt(s.notStarted);
+  $("svToday").textContent = `今日:认识 ${s.todayYes} · 不认识 ${s.todayNo}`;
+  const judgedTotal = s.totalYes + s.totalNo;
+  $("svAcc").textContent = judgedTotal
+    ? `累计正确率 ${Math.round(s.accuracy * 100)}%(认识 ${fmt(s.totalYes)}/${fmt(judgedTotal)} 张)`
+    : "累计正确率 –(还没判过)";
+  renderChart(s.trend);
+  $("statsView").hidden = false;
+}
+
+function closeStats() {
+  statsOpen = false;
+  $("statsView").hidden = true;
+  render();
+}
+
 /* ---------- 队列 ---------- */
 function rebuildQueue() {
   const now = Date.now();
@@ -192,6 +251,7 @@ function rebuildQueue() {
   queue = q;
   judged = 0; reviewed = 0; fresh = 0;
   classified.clear();
+  history = []; viewIndex = 0;
   // 当日新词发放数落库:同一天重复打开不会超额再发新词
   box.meta = { lastNewDate: new Date(now).toDateString(), lastNewCount: newToday };
   saveState(box);
@@ -224,11 +284,13 @@ async function init() {
 
 /* ---------- 事件 ---------- */
 $("speak").addEventListener("click", () => speak($("word").textContent));
-$("speakBack").addEventListener("click", () => speak($("wordBack").textContent));
-$("reveal").addEventListener("click", reveal);
 $("btnNo").addEventListener("click", () => judge(false));
 $("btnYes").addEventListener("click", () => judge(true));
-$("refresh").addEventListener("click", () => location.reload());
+$("prevBtn").addEventListener("click", lookBack);
+$("nextBtn").addEventListener("click", returnNow);
+$("chartBtn").addEventListener("click", openStats);
+$("statsClose").addEventListener("click", closeStats);
+$("doneStats").addEventListener("click", openStats);
 $("retry").addEventListener("click", () => location.reload());
 
 /* ⚙ 设置抽屉 */
@@ -274,7 +336,7 @@ $("importFile").addEventListener("change", () => {
     }
     saveState(box);
     rebuildQueue();
-    render();
+    closeStats(); // 统计页可能开着:一并关掉再回到卡片/完成画面
     $("panel").classList.remove("open");
     toast("已导入");
     input.value = ""; // 允许再次选同一文件
@@ -283,19 +345,27 @@ $("importFile").addEventListener("change", () => {
   reader.readAsText(file);
 });
 
-/* 键盘:空格翻面,← 不认识,→ 认识;输入框/设置面板聚焦或打开时忽略 */
+/* 键盘:← 不认识,→ 认识;回看时 ←/→ 翻看;Esc 关统计;输入框/设置面板聚焦或打开时忽略 */
 document.addEventListener("keydown", (e) => {
   const t = e.target;
   if (t && t.closest && t.closest("input, textarea, select, #panel")) return;
   if ($("panel").classList.contains("open")) return;
+  if (statsOpen) {
+    if (e.key === "Escape") closeStats();
+    return;
+  }
   if (!vocab || !queue.length) return;
-  if (e.key === " " || e.code === "Space") {
+  if (viewIndex > 0) { // 回看模式:方向键只在历史与当前之间移动,不判定
+    if (e.key === "ArrowLeft") { e.preventDefault(); lookBack(); }
+    else if (e.key === "ArrowRight") { e.preventDefault(); returnNow(); }
+    return;
+  }
+  if (e.key === "ArrowLeft") {
     e.preventDefault();
-    reveal();
-  } else if (e.key === "ArrowLeft") {
-    if (revealed) { e.preventDefault(); judge(false); }
+    judge(false);
   } else if (e.key === "ArrowRight") {
-    if (revealed) { e.preventDefault(); judge(true); }
+    e.preventDefault();
+    judge(true);
   }
 });
 

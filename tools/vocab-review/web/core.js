@@ -35,6 +35,62 @@ export function buildQueue(words, states, now, dailyLimit, meta) {
 
 export const STORAGE_KEY = "vocab-review-state-v1";
 
+/* ---------- 统计 ---------- */
+
+function dayKey(now) {
+  const d = new Date(now);
+  const pad = (x) => String(x).padStart(2, "0");
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+}
+
+/** 每次判定后记账:返回更新后的 meta(新对象,不改入参)。
+ *  meta.dailyLog = { "YYYY-MM-DD": {y: n, n: n} },totalYes/totalNo 为累计判定数。
+ *  旧存档缺这些字段时可兼容:按零处理。 */
+export function logJudge(meta, now, isYes) {
+  const base = meta || {};
+  const key = dayKey(now);
+  const log = { ...(base.dailyLog || {}) };
+  const day = { y: 0, n: 0, ...log[key] };
+  log[key] = { y: day.y + (isYes ? 1 : 0), n: day.n + (isYes ? 0 : 1) };
+  return {
+    ...base,
+    dailyLog: log,
+    totalYes: (base.totalYes || 0) + (isYes ? 1 : 0),
+    totalNo: (base.totalNo || 0) + (isYes ? 0 : 1),
+  };
+}
+
+/** 汇总统计视图模型:词池四态 + 今日判定 + 累计正确率 + 近 7 日趋势。
+ *  words=当前词池的词表,states=进度盒 states,vocabStats=vocab.json 的 stats。 */
+export function summarize(words, states, meta, vocabStats, now = Date.now()) {
+  const m = meta || {};
+  const st = states || {};
+  let graduated = 0, learning = 0, notStarted = 0;
+  for (const w of words) {
+    const s = st[w];
+    if (s && s.g) graduated += 1;
+    else if (s) learning += 1;      // 有状态 = 见过(判定过至少一次)
+    else notStarted += 1;
+  }
+  const total = (vocabStats && (vocabStats.candidate + vocabStats.known)) || words.length;
+  const today = m.dailyLog && m.dailyLog[dayKey(now)];
+  const totalYes = m.totalYes || 0, totalNo = m.totalNo || 0;
+  const trend = [];
+  for (let i = 6; i >= 0; i--) {
+    const key = dayKey(now - i * DAY);
+    const day = (m.dailyLog && m.dailyLog[key]) || { y: 0, n: 0 };
+    trend.push({ key, y: day.y || 0, n: day.n || 0 });
+  }
+  return {
+    total, graduated, learning, notStarted,
+    todayYes: (today && today.y) || 0,
+    todayNo: (today && today.n) || 0,
+    totalYes, totalNo,
+    accuracy: totalYes + totalNo ? totalYes / (totalYes + totalNo) : 0,
+    trend,
+  };
+}
+
 export function emptyBox() {
   return { states: {}, meta: { lastNewDate: "", lastNewCount: 0 } };
 }
