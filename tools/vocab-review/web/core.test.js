@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { newState, answerYes, answerNo, buildQueue, endOfToday } from "./core.js";
+import { newState, answerYes, answerNo, buildQueue, endOfToday, mergeImport } from "./core.js";
 
 const DAY = 86400000;
 test("认识:间隔 1→3→×ease,连认4次毕业", () => {
@@ -38,4 +38,13 @@ test("队列:到期复习在前,新词受每日上限", () => {
 test("endOfToday 返回当天 24:00", () => {
   const t = new Date("2026-09-28T09:00:00").getTime();
   assert.equal(endOfToday(t), new Date("2026-09-28T23:59:59.999").getTime());
+});
+
+test("mergeImport 以导入为准且校验结构", () => {
+  const cur = { states: { a: newState() }, meta: { lastNewDate: "", lastNewCount: 0 } };
+  const imp = { states: { b: { ...newState(), r: 2 } }, meta: { lastNewDate: "x", lastNewCount: 5 } };
+  const merged = mergeImport(cur, imp);
+  assert.deepEqual(Object.keys(merged.states), ["b"]);
+  assert.equal(merged.meta.lastNewCount, 5);
+  assert.throws(() => mergeImport(cur, { states: null }), /格式不对/);
 });

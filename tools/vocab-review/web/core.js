@@ -32,3 +32,36 @@ export function buildQueue(words, states, now, dailyLimit, meta) {
   const newWords = fresh.slice(0, Math.max(0, dailyLimit - used));
   return { queue: [...review.map((x) => x[1]), ...newWords], newToday: used + newWords.length };
 }
+
+export const STORAGE_KEY = "vocab-review-state-v1";
+
+export function emptyBox() {
+  return { states: {}, meta: { lastNewDate: "", lastNewCount: 0 } };
+}
+
+export function mergeImport(current, imported) {
+  if (!imported || typeof imported !== "object"
+    || typeof imported.states !== "object" || imported.states === null
+    || typeof imported.meta !== "object") {
+    throw new Error("导入文件格式不对");
+  }
+  return { states: { ...imported.states }, meta: { ...imported.meta } };
+}
+
+export function loadState() {
+  const box = emptyBox();
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY);
+    if (raw) Object.assign(box, JSON.parse(raw));
+    box.storageOk = true;
+  } catch { box.storageOk = false; }
+  return box;
+}
+
+export function saveState(box) {
+  try { localStorage.setItem(STORAGE_KEY, JSON.stringify(box)); } catch { /* 隐私模式 */ }
+}
+
+export function exportPayload(box, vocabMeta) {
+  return JSON.stringify({ exportedAt: new Date().toISOString(), vocab: vocabMeta, ...box }, null, 1);
+}
