@@ -93,3 +93,18 @@ def test_pick_sentences_shortest_first_with_source():
     assert len(picked) == 2
     assert picked[0]["en"] == "We can reclaim the plastics from old computers now."
     assert picked[0]["from"] == "书B Unit 2"
+
+
+def test_build_end_to_end_with_fixtures(tmp_path):
+    import build, ecdict
+    src = tmp_path / "docs"; src.mkdir()
+    (src / "a.md").write_text(
+        "# 书A Unit 1\n\n---\n\n`0:00:01 → 0:00:05`\n\n"
+        "**They reclaim the land quickly. Running helps.**\n\n---\n", encoding="utf-8")
+    result = build.build(src, _mini_db(tmp_path), level="gk")
+    words = {w["w"]: w for w in result["words"]}
+    assert "reclaim" in words and words["reclaim"]["def"].startswith("vt.")
+    assert words["reclaim"]["sents"][0]["en"] == "They reclaim the land quickly."
+    assert words["reclaim"]["tags"] == "cet6 ky ielts"
+    assert "run" not in words                      # zk/gk → 已会,不进 words
+    assert result["stats"]["total"] >= 4
