@@ -31,3 +31,41 @@ def test_load_for_tokens_resolves_lemma_and_fields(tmp_path):
     assert entries["reclaim"]["phon"] == "/rɪˈkleɪm/"     # phon 取自 phonetic 列
     assert entries["reclaim"]["translation"].startswith("vt.")
     assert "zzz" not in entries
+
+
+MD = """# 测试书 Unit 1｜示例
+
+> 来源: xxx
+
+---
+
+`0:00:01 → 0:00:05`
+
+**Reclamation of old land takes years. And they Running fast!**
+
+---
+
+`0:00:05 → 0:00:08`
+
+**Do you know the word reclaim?**
+"""
+
+
+def test_md_english_lines_and_title():
+    import build
+    lines = build.md_english_lines(MD)
+    assert lines == ["Reclamation of old land takes years. And they Running fast!",
+                     "Do you know the word reclaim?"]
+    assert build.doc_title(MD) == "测试书 Unit 1｜示例"
+
+
+def test_tokenize_keeps_alpha_words_only():
+    import build
+    assert build.tokenize("Reclamation of OLD land, takes 3 years--OK? A I") == \
+        ["reclamation", "of", "old", "land", "takes", "years", "ok"]
+
+
+def test_split_sentences_filters_by_word_count():
+    import build
+    sents = build.split_sentences(["Reclamation takes years. Yes! Do you know it?"])
+    assert sents == ["Reclamation takes years.", "Do you know it?"]  # Yes! 仅1词被滤
