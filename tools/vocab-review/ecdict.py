@@ -5,14 +5,14 @@ import re
 import sqlite3
 from pathlib import Path
 
-_EX_LINK = re.compile(r"(?:^|/)([01]):([^/]+)")
+_EX_LINK = re.compile(r"(?:^|/)0:([^/]+)")
 _CHUNK = 400
 
 
 def _lemma_of(exchange: str, word: str) -> str:
-    """exchange 的 0:/1: 段指向原形;解析不到返回自身。"""
+    """exchange 的 0: 段指向原形(1: 是词形代码,不是词);解析不到返回自身。"""
     for m in _EX_LINK.finditer(exchange or ""):
-        return m.group(2)
+        return m.group(1)
     return word
 
 

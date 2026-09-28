@@ -17,6 +17,7 @@ def _mini_db(tmp_path):
         ("run", "/rʌn/", "v. 跑", "zk gk", 100, "i:running/3:runs/d:ran"),
         ("running", "/ˈrʌnɪŋ/", "n. 跑步", "gk", 2000, "0:run/1:i"),
         ("reclaim", "/rɪˈkleɪm/", "vt. 开拓；回收利用", "cet6 ky ielts", 8000, "d:reclaimed"),
+        ("intriguing", "/ɪnˈtriːɡɪŋ/", "a. 有趣的", "cet6", 9000, "1:i/0:intrigue"),
     ])
     con.commit(); con.close()
     return p
@@ -31,6 +32,13 @@ def test_load_for_tokens_resolves_lemma_and_fields(tmp_path):
     assert entries["reclaim"]["phon"] == "/rɪˈkleɪm/"     # phon 取自 phonetic 列
     assert entries["reclaim"]["translation"].startswith("vt.")
     assert "zzz" not in entries
+
+
+def test_lemma_takes_only_root_segment_not_form_code(tmp_path):
+    """1: 段排前时也只取 0: 段——1: 是词形代码(i/s3/pd…),不是词。"""
+    import ecdict
+    _, lemmas = ecdict.load_for_tokens(_mini_db(tmp_path), {"intriguing"})
+    assert lemmas["intriguing"] == "intrigue"    # 1:i/0:intrigue → 原形,而非 "i"
 
 
 MD = """# 测试书 Unit 1｜示例

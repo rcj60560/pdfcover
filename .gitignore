@@ -71,3 +71,6 @@ tools/bilibili-subtitles/.models/
 
 # word2md 网页版上传/转换产物
 tools/word2md/out/
+
+# vocab-review 构建产物（由 build.py 生成后上传，不入库）
+tools/vocab-review/web/vocab.json
