@@ -252,8 +252,8 @@ function rebuildQueue() {
   judged = 0; reviewed = 0; fresh = 0;
   classified.clear();
   history = []; viewIndex = 0;
-  // 当日新词发放数落库:同一天重复打开不会超额再发新词
-  box.meta = { lastNewDate: new Date(now).toDateString(), lastNewCount: newToday };
+  // 当日新词发放数落库:同一天重复打开不会超额再发新词(保留 meta 既有字段,统计日志不清)
+  box.meta = { ...box.meta, lastNewDate: new Date(now).toDateString(), lastNewCount: newToday };
   saveState(box);
 }
 
