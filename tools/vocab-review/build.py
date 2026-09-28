@@ -43,3 +43,33 @@ def split_sentences(lines: list[str]) -> list[str]:
             if 3 <= len(sent.split()) <= 30:
                 out.append(sent)
     return out
+
+
+KNOWN_TIERS = ["zk", "gk"]
+CANDIDATE_TIERS = ["cet4", "cet6", "ky", "toefl", "ielts", "gre"]
+FREQ_KNOWN_RANK = 5000      # 无标签但 COCA 排名前 5000 视为常用已会
+
+
+def classify(entry: dict | None, level: str = "gk") -> str:
+    """按 ECDICT 标签/词频划线;level 可上调(如 cet4)扩大已会范围。"""
+    if not entry:
+        return "drop"
+    tags = set((entry["tag"] or "").split())
+    known_tiers = KNOWN_TIERS[:KNOWN_TIERS.index(level) + 1] if level in KNOWN_TIERS else KNOWN_TIERS
+    if tags & set(known_tiers):
+        return "known"
+    if tags & set(CANDIDATE_TIERS):
+        return "candidate"
+    if entry["frq"] <= 0:
+        return "drop"
+    if 0 < entry["frq"] <= FREQ_KNOWN_RANK:
+        return "known"
+    return "candidate"
+
+
+def pick_sentences(variants: set[str], sentences: list[tuple[str, str]], limit: int = 2) -> list[dict]:
+    """按词数降序取前 limit 条例句——取上下文更足的长句。"""
+    hits = [(len(en.split()), en, src) for en, src in sentences
+            if variants & set(tokenize(en))]
+    hits.sort(key=lambda h: -h[0])
+    return [{"en": en, "from": src} for _, en, src in hits[:limit]]

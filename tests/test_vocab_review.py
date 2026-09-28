@@ -69,3 +69,27 @@ def test_split_sentences_filters_by_word_count():
     import build
     sents = build.split_sentences(["Reclamation takes years. Yes! Do you know it?"])
     assert sents == ["Reclamation takes years.", "Do you know it?"]  # Yes! 仅1词被滤
+
+
+def test_classify_by_tags_and_frequency():
+    import build
+    gk = {"tag": "zk gk", "frq": 300}
+    cet6 = {"tag": "cet6 ky ielts", "frq": 8000}
+    plain_high = {"tag": "", "frq": 1500}       # 无标签但词频前5000
+    plain_low = {"tag": "", "frq": 0}           # 未收录语料 → 丢弃
+    assert build.classify(gk) == "known"
+    assert build.classify(cet6) == "candidate"
+    assert build.classify(plain_high) == "known"
+    assert build.classify(plain_low) == "drop"
+    assert build.classify(None) == "drop"
+
+
+def test_pick_sentences_shortest_first_with_source():
+    import build
+    sents = [("Reclamation of land takes years and costs money.", "书A Unit 1"),
+             ("They reclaim it.", "书B Unit 2"),
+             ("We can reclaim the plastics from old computers now.", "书B Unit 2")]
+    picked = build.pick_sentences({"reclaim", "reclamation"}, sents)
+    assert len(picked) == 2
+    assert picked[0]["en"] == "We can reclaim the plastics from old computers now."
+    assert picked[0]["from"] == "书B Unit 2"
