@@ -12,7 +12,9 @@
 
 ## Global Constraints
 
-- 纯标准库,不加 pip 依赖(ECDICT 解压若需 7z 允许临时 `pip install py7zr`)
+- 纯标准库,不加 pip 依赖(ECDICT 为 sqlite 格式,标准库 sqlite3 直读)
+- ECDICT 数据已就位:`tmp/ecdict/stardict.db`(811MB,表 `stardict`,列含
+  `word(有索引)/phonetic/translation/tag/frq/exchange`;只读勿改)
 - ECDICT 词级标签:`zk`=中考 `gk`=高考 `cet4/cet6/ky/toefl/ielts/gre`;默认划线 `gk`(zk+gk=已会)
 - SM-2:认识 r+1,i=1→3→round(i×e),r≥4 或 i≥21 毕业;不认识 e−0.2(下限 1.3),due=+10min
 - localStorage key:`vocab-review-state-v1`;词以**词形原形(lemma)**为键
@@ -28,22 +30,14 @@
 - Test: `tests/test_vocab_review.py`(本工具全部 pytest 集中此文件)
 
 **Interfaces:**
-- Produces: `load_for_tokens(csv_path: Path, tokens: set[str]) -> tuple[dict[str, dict], dict[str, str]]`
-  返回 (entries, lemmas):entries[token] = `{word, phon, translation, tag, frq, exchange}`(无收录则无该键);
+- Produces: `load_for_tokens(db_path: Path, tokens: set[str]) -> tuple[dict[str, dict], dict[str, str]]`
+  返回 (entries, lemmas):entries[token] = `{word, phon, translation, tag, frq, exchange}`(无收录则无该键;`phon` 取自表的 `phonetic` 列);
   lemmas[token] = 词形原形(token 本身或 exchange 的 `0:`/`1:` 指向,解析不到原形时为 token 自身)
-- CSV 字段名(ECDICT stardict.csv 表头):`word,phon,translation,exchange,frq,tag,...`(frq 为 COCA 词频排名,0=未收录语料)
+- 库表:`stardict(word, sw, phonetic, definition, translation, pos, collins, oxford, tag, bnc, frq, exchange, ...)`,word 有索引;以只读 URI 打开
 
-- [ ] **Step 0: 下载 ECDICT 数据(一次性环境准备)**
+- [ ] **Step 0: 确认数据就位(已由控制者完成,勿重复)**
 
-从 https://github.com/skywind3000/ecdict 的 Releases 下载 csv 压缩包(约 54MB,7z 格式),
-解压出 `stardict.csv`(约 190MB)放到 `tmp/ecdict/stardict.csv`。Windows 无 7z 命令时:
-
-```bash
-python -m pip install py7zr
-python -c "import py7zr; py7zr.SevenZipFile(r'<下载的7z路径>').extractall(r'tmp/ecdict')"
-```
-
-验证:`tmp/ecdict/stardict.csv` 存在且 >100MB,表头含 `exchange`。
+`tmp/ecdict/stardict.db` 已存在(811MB)。实现用 `sqlite3.connect(f"file:{path}?mode=ro", uri=True)` 只读打开。
 
 - [ ] **Step 1: 写失败测试**
 
@@ -56,24 +50,29 @@ TOOL = Path(__file__).parents[1] / "tools" / "vocab-review"
 sys.path.insert(0, str(TOOL))
 
 
-def _mini_csv(tmp_path):
-    rows = [
-        "word,phon,translation,exchange,frq,tag",
-        "run,/rʌn/,v. 跑,i:running/3:runs/d:ran/p:run,100,zk gk",
-        "running,/ˈrʌnɪŋ/,n. 跑步,0:run,2000,gk",
-        "reclaim,/rɪˈkleɪm/,vt. 开拓；回收利用,,8000,cet6 ky ielts",
-    ]
-    p = tmp_path / "mini.csv"
-    p.write_text("\n".join(rows) + "\n", encoding="utf-8")
+def _mini_db(tmp_path):
+    import sqlite3
+    p = tmp_path / "mini.db"
+    con = sqlite3.connect(p)
+    con.execute(
+        "CREATE TABLE stardict (word TEXT PRIMARY KEY, sw TEXT, phonetic TEXT,"
+        " translation TEXT, tag TEXT, bnc TEXT, frq INTEGER, exchange TEXT)")
+    con.executemany("INSERT INTO stardict (word, phonetic, translation, tag, frq, exchange) VALUES (?,?,?,?,?,?)", [
+        ("run", "/rʌn/", "v. 跑", "zk gk", 100, "i:running/3:runs/d:ran"),
+        ("running", "/ˈrʌnɪŋ/", "n. 跑步", "gk", 2000, "0:run/1:i"),
+        ("reclaim", "/rɪˈkleɪm/", "vt. 开拓；回收利用", "cet6 ky ielts", 8000, "d:reclaimed"),
+    ])
+    con.commit(); con.close()
     return p
 
 
 def test_load_for_tokens_resolves_lemma_and_fields(tmp_path):
     import ecdict
-    entries, lemmas = ecdict.load_for_tokens(_mini_csv(tmp_path), {"running", "ran", "reclaim", "zzz"})
+    entries, lemmas = ecdict.load_for_tokens(_mini_db(tmp_path), {"running", "ran", "reclaim", "zzz"})
     assert lemmas["running"] == "run"          # exchange 0:run → 原形
     assert lemmas["ran"] == "ran"              # 无独立词条 → 保持自身
     assert entries["reclaim"]["tag"] == "cet6 ky ielts"
+    assert entries["reclaim"]["phon"] == "/rɪˈkleɪm/"     # phon 取自 phonetic 列
     assert entries["reclaim"]["translation"].startswith("vt.")
     assert "zzz" not in entries and "zzz" not in lemmas
 ```
@@ -86,15 +85,15 @@ Expected: FAIL `ModuleNotFoundError: No module named 'ecdict'`
 - [ ] **Step 3: 实现**
 
 ```python
-"""ECDICT stardict.csv 只读访问:为给定 token 集合取词条并解析词形原形。"""
+"""ECDICT sqlite(stardict.db)只读访问:为给定 token 集合取词条并解析词形原形。"""
 from __future__ import annotations
 
-import csv
 import re
+import sqlite3
 from pathlib import Path
 
-_FIELDS = ("word", "phon", "translation", "exchange", "frq", "tag")
 _EX_LINK = re.compile(r"(?:^|/)([01]):([^/]+)")
+_CHUNK = 400
 
 
 def _lemma_of(exchange: str, word: str) -> str:
@@ -104,21 +103,28 @@ def _lemma_of(exchange: str, word: str) -> str:
     return word
 
 
-def load_for_tokens(csv_path: Path, tokens: set[str]) -> tuple[dict[str, dict], dict[str, str]]:
-    wanted = {t.lower() for t in tokens}
+def load_for_tokens(db_path: Path, tokens: set[str]) -> tuple[dict[str, dict], dict[str, str]]:
+    wanted = sorted({t.lower() for t in tokens})
     entries: dict[str, dict] = {}
-    lemmas: dict[str, str] = {}
-    with open(csv_path, encoding="utf-8", errors="ignore", newline="") as f:
-        for row in csv.DictReader(f):
-            word = (row.get("word") or "").strip().lower()
-            if word not in wanted or word in entries:
-                continue
-            entries[word] = {k: (row.get(k) or "").strip() for k in _FIELDS}
-            entries[word]["frq"] = int(entries[word]["frq"] or 0)
-    for token in wanted:
-        entry = entries.get(token)
-        lemmas[token] = _lemma_of(entry["exchange"], token) if entry else token
-    # 原形若本身无词条但变体有:把变体词条挂给查询方使用即可(保持 entries 键不变)
+    con = sqlite3.connect(f"file:{db_path}?mode=ro", uri=True)
+    try:
+        for start in range(0, len(wanted), _CHUNK):
+            chunk = wanted[start:start + _CHUNK]
+            marks = ",".join("?" * len(chunk))
+            for word, phonetic, translation, exchange, frq, tag in con.execute(
+                    f"SELECT word, phonetic, translation, exchange, frq, tag"
+                    f" FROM stardict WHERE word IN ({marks})", chunk):
+                entries[word.lower()] = {
+                    "word": word,
+                    "phon": (phonetic or "").strip(),
+                    "translation": (translation or "").strip(),
+                    "exchange": (exchange or "").strip(),
+                    "frq": int(frq or 0),
+                    "tag": (tag or "").strip(),
+                }
+    finally:
+        con.close()
+    lemmas = {t: _lemma_of(entries[t]["exchange"], t) if t in entries else t for t in wanted}
     return entries, lemmas
 ```
 
@@ -346,7 +352,7 @@ def test_build_end_to_end_with_fixtures(tmp_path):
     (src / "a.md").write_text(
         "# 书A Unit 1\n\n---\n\n`0:00:01 → 0:00:05`\n\n"
         "**They reclaim the land quickly. Running helps.**\n\n---\n", encoding="utf-8")
-    result = build.build(src, _mini_csv(tmp_path), level="gk")
+    result = build.build(src, _mini_db(tmp_path), level="gk")
     words = {w["w"]: w for w in result["words"]}
     assert "reclaim" in words and words["reclaim"]["def"].startswith("vt.")
     assert words["reclaim"]["sents"][0]["en"] == "They reclaim the land quickly."
@@ -417,7 +423,7 @@ def build(src_root: Path, ecdict_path: Path, level: str = "gk") -> dict:
 def main() -> int:
     ap = argparse.ArgumentParser(description="字幕库 → vocab.json 词池")
     ap.add_argument("--src", type=Path, default=None)
-    ap.add_argument("--ecdict", type=Path, default=TOOL_DIR.parents[2] / "tmp" / "ecdict" / "stardict.csv")
+    ap.add_argument("--ecdict", type=Path, default=TOOL_DIR.parents[2] / "tmp" / "ecdict" / "stardict.db")
     ap.add_argument("--out", type=Path, default=TOOL_DIR / "web" / "vocab.json")
     ap.add_argument("--level", default="gk", choices=["zk", "gk", "cet4"])
     args = ap.parse_args()
@@ -426,8 +432,9 @@ def main() -> int:
         cfg = json.loads((TOOL_DIR.parent / "subtitle-viewer" / "config.json").read_text(encoding="utf-8"))
         src = Path(cfg["src_root"])
     if not args.ecdict.is_file():
-        raise SystemExit(f"找不到 ECDICT csv:{args.ecdict}\n下载见 "
-                         "https://github.com/skywind3000/ecdict releases,解压后传 --ecdict")
+        raise SystemExit(f"找不到 ECDICT sqlite:{args.ecdict}\n"
+                         "从 https://github.com/skywind3000/ecdict releases 下载 ecdict-sqlite-28.zip,"
+                         "解压出 stardict.db 放到 tmp/ecdict/(或用 --ecdict 指路)")
     result = build(src, args.ecdict, args.level)
     args.out.parent.mkdir(parents=True, exist_ok=True)
     args.out.write_text(json.dumps(result, ensure_ascii=False), encoding="utf-8")
