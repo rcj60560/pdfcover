@@ -1,7 +1,7 @@
-/** vocab-review 复习页:加载词库 → 建队列 → 卡片流(直显/判定/发音/回看)+ 统计报表 + 设置抽屉。纯逻辑在 core.js。 */
+/** vocab-review 复习页:加载词库 → 建队列 → 卡片流(直显/判定/发音/回看)+ 统计报表 + 词库总览 + 设置抽屉。纯逻辑在 core.js。 */
 import {
   newState, answerYes, answerNo, buildQueue,
-  mergeImport, loadState, saveState, exportPayload, logJudge, summarize,
+  mergeImport, loadState, saveState, exportPayload, logJudge, summarize, wordGroups,
   STORAGE_KEY,
 } from "./core.js";
 
@@ -20,6 +20,8 @@ let fresh = 0;               // 本次会话判定的新词张数
 let history = [];            // 本会话已判定的词(按判定顺序,供回看)
 let viewIndex = 0;           // 0 = 当前卡;i > 0 = 只读回看倒数第 i 张
 let statsOpen = false;       // 统计报表是否打开
+let listOpen = false;        // 词库总览是否打开
+let listFilter = { q: "", status: "all" };  // 总览筛选:搜索串 + 状态(默认全部)
 const classified = new Set(); // 已计数的词(不认识的卡重现时不重复计数)
 let toastTimer = 0;
 
@@ -227,6 +229,7 @@ function openStats() {
   statsOpen = true;
   hideCardArea();
   $("done").hidden = true;
+  $("listView").hidden = true; // 整卡画面互斥:总览开着时切到统计
   const s = summarize(vocab.words.map((x) => x.w), box.states, box.meta, vocab.stats);
   $("svTotal").textContent = fmt(s.total);
   $("svGrad").textContent = fmt(s.graduated);
@@ -244,6 +247,72 @@ function openStats() {
 function closeStats() {
   statsOpen = false;
   $("statsView").hidden = true;
+  render();
+}
+
+/* ---------- 词库总览 ---------- */
+const LV_LABEL = { fresh: "未开始", learning: "学习中", done: "已毕业 ✓" };
+
+function renderList() {
+  const { counts, groups } = wordGroups(vocab.words.map((x) => x.w), box.states);
+  const pct = counts.total ? Math.round((counts.done / counts.total) * 100) : 0;
+  $("lvProgress").textContent = `总数 ${fmt(counts.total)} · 已毕业 ${fmt(counts.done)}(${pct}%)`;
+  $("lvBarFill").style.width = `${pct}%`;
+  $("lvCounts").textContent = `学习中 ${fmt(counts.learning)} · 未开始 ${fmt(counts.fresh)}`;
+  const q = listFilter.q.trim().toLowerCase();
+  const frag = document.createDocumentFragment();
+  for (const g of groups) {
+    const items = g.items.filter((it) =>
+      (listFilter.status === "all" || it.status === listFilter.status)
+      && (!q || it.w.toLowerCase().includes(q)));
+    if (!items.length) continue;
+    const head = document.createElement("div");
+    head.className = "lv-letter";
+    head.textContent = g.letter;
+    frag.append(head);
+    for (const it of items) {
+      const row = document.createElement("div");
+      row.className = "lv-row";
+      const wordBtn = document.createElement("button");
+      wordBtn.type = "button";
+      wordBtn.className = "lv-word";
+      wordBtn.textContent = it.w;
+      wordBtn.addEventListener("click", () => speak(it.w)); // 点词只发音,不导航
+      const tag = document.createElement("span");
+      tag.className = `lv-tag ${it.status}`;
+      tag.textContent = LV_LABEL[it.status];
+      row.append(wordBtn, tag);
+      frag.append(row);
+    }
+  }
+  if (!frag.childElementCount) {
+    const empty = document.createElement("div");
+    empty.className = "lv-empty";
+    empty.textContent = "没有匹配的单词";
+    frag.append(empty);
+  }
+  const listEl = $("lvList");
+  listEl.textContent = "";
+  listEl.append(frag);
+}
+
+function openList() {
+  if (!vocab || !box) return;
+  listOpen = true;
+  hideCardArea();
+  $("done").hidden = true;
+  $("statsView").hidden = true; // 整卡画面互斥:统计开着时切到总览
+  statsOpen = false;
+  listFilter = { q: "", status: "all" }; // 每次打开都按当前进度重新拉取
+  $("lvSearch").value = "";
+  for (const c of $("lvChips").children) c.classList.toggle("on", c.dataset.f === "all");
+  renderList();
+  $("listView").hidden = false;
+}
+
+function closeList() {
+  listOpen = false;
+  $("listView").hidden = true;
   render();
 }
 
@@ -297,6 +366,22 @@ $("nextBtn").addEventListener("click", returnNow);
 $("chartBtn").addEventListener("click", openStats);
 $("statsClose").addEventListener("click", closeStats);
 $("doneStats").addEventListener("click", openStats);
+$("listBtn").addEventListener("click", () => {
+  $("panel").classList.remove("open");
+  openList();
+});
+$("listClose").addEventListener("click", closeList);
+$("lvSearch").addEventListener("input", () => {
+  listFilter.q = $("lvSearch").value;
+  renderList();
+});
+$("lvChips").addEventListener("click", (e) => {
+  const b = e.target.closest("button[data-f]");
+  if (!b) return;
+  listFilter.status = b.dataset.f;
+  for (const c of $("lvChips").children) c.classList.toggle("on", c === b);
+  renderList();
+});
 $("doneMore").addEventListener("click", () => {
   extra += settings.dailyLimit;   // 追加一批(数量=每日上限);当日发放数照常落库,明日不超发
   rebuildQueue();
@@ -356,6 +441,7 @@ $("importFile").addEventListener("change", () => {
     saveState(box);
     rebuildQueue();
     closeStats(); // 统计页可能开着:一并关掉再回到卡片/完成画面
+    if (listOpen) renderList(); // 总览开着:进度已变,就地重绘
     $("panel").classList.remove("open");
     toast("已导入");
     input.value = ""; // 允许再次选同一文件
@@ -364,13 +450,17 @@ $("importFile").addEventListener("change", () => {
   reader.readAsText(file);
 });
 
-/* 键盘:← 不认识,→ 认识;回看时 ←/→ 翻看;Esc 关统计;输入框/设置面板聚焦或打开时忽略 */
+/* 键盘:← 不认识,→ 认识;回看时 ←/→ 翻看;Esc 关统计/总览;输入框/设置面板聚焦或打开时忽略 */
 document.addEventListener("keydown", (e) => {
   const t = e.target;
   if (t && t.closest && t.closest("input, textarea, select, #panel")) return;
   if ($("panel").classList.contains("open")) return;
   if (statsOpen) {
     if (e.key === "Escape") closeStats();
+    return;
+  }
+  if (listOpen) {
+    if (e.key === "Escape") closeList();
     return;
   }
   if (!vocab || !queue.length) return;

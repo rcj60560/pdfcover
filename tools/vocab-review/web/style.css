@@ -102,6 +102,29 @@ body {
 .legend .chip.yes { background: var(--okBar); }
 .legend .chip.no { background: var(--noBar); margin-left: 10px; }
 
+/* 📖 词库总览 */
+.listview { align-items: stretch; justify-content: flex-start; text-align: left; padding: 18px; gap: 10px; }
+.listview .close { border: none; background: #eee9f8; color: var(--violet); border-radius: 999px; width: 30px; height: 30px; line-height: 1; font-size: 13px; cursor: pointer; }
+.listview .line { font-size: 14px; color: var(--ink); }
+.listview .lv-sub { font-size: 12.5px; color: var(--muted); margin-top: -4px; }
+.listview .bar { flex: none; height: 5px; }   /* 覆盖 .bar 的 flex:1(列布局里会撑高) */
+.lv-filter { display: flex; flex-direction: column; gap: 8px; }
+.lv-filter input { border: 1.5px solid #ddd6ee; border-radius: 10px; padding: 9px 10px; font-size: 15px; color: var(--ink); min-height: 44px; background: var(--card); }
+.chips { display: flex; gap: 6px; flex-wrap: wrap; }
+.chipbtn { border: 1.5px solid #ddd6ee; background: none; color: var(--muted); border-radius: 999px; padding: 8px 13px; font-size: 12.5px; cursor: pointer; }
+.chipbtn.on { border-color: var(--violet); color: var(--violet); background: #eee9f8; font-weight: 600; }
+.lv-list { overflow-y: auto; max-height: 54vh; min-height: 120px; border: 1px solid #e5dff2; border-radius: 12px; background: var(--card); }
+.lv-letter { position: sticky; top: 0; z-index: 1; background: #eee9f8; color: var(--violet); font-size: 12px; font-weight: 700; padding: 6px 12px; }
+.lv-row { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 0 12px; min-height: 44px; border-bottom: 1px solid #f0ecf8; }
+.lv-row:last-child { border-bottom: none; }
+.lv-word { flex: 1; min-width: 0; border: none; background: none; font-size: 15px; color: var(--ink); text-align: left; padding: 10px 0; cursor: pointer; overflow-wrap: anywhere; }
+.nospeak .lv-word { cursor: default; }           /* 无语音合成时点词无动作 */
+.lv-tag { flex: none; font-size: 11px; padding: 4px 9px; border-radius: 999px; white-space: nowrap; }
+.lv-tag.fresh { background: #eceaf2; color: var(--muted); }
+.lv-tag.learning { background: #e6e0f8; color: var(--violet); }
+.lv-tag.done { background: #e8f5ee; color: var(--ok); }
+.lv-empty { padding: 26px 12px; text-align: center; font-size: 13px; color: var(--muted); }
+
 /* ⚙ 设置抽屉(右侧滑出) */
 .panel { position: fixed; top: 0; right: 0; height: 100%; width: min(320px, 86vw); background: var(--card); box-shadow: -10px 0 32px rgba(38,33,60,.18); transform: translateX(105%); visibility: hidden; /* 关闭时移出 Tab 焦点 */ transition: transform .25s ease, visibility 0s .25s; z-index: 30; padding: 16px; display: flex; flex-direction: column; gap: 14px; }
 .panel.open { transform: none; visibility: visible; transition: transform .25s ease; }

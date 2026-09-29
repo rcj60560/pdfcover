@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { newState, answerYes, answerNo, buildQueue, endOfToday, mergeImport, logJudge, summarize } from "./core.js";
+import { newState, answerYes, answerNo, buildQueue, endOfToday, mergeImport, logJudge, summarize, wordGroups } from "./core.js";
 
 const DAY = 86400000;
 test("认识:间隔 1→3→×ease,连认4次毕业", () => {
@@ -99,4 +99,32 @@ test("summarize:空进度与无 stats 时兜底", () => {
   assert.equal(s.notStarted, 1);
   assert.equal(s.todayYes, 0); assert.equal(s.todayNo, 0);
   assert.equal(s.accuracy, 0);                      // 无判定不除零
+});
+
+test("wordGroups:字母分节/组内排序/空字母跳过/# 兜底", () => {
+  const states = {
+    apple: { ...newState(), g: true },              // 已毕业
+    apron: { ...newState(), r: 1 },                 // 学习中
+    banana: { ...newState() },                      // 学习中(答过但未毕业)
+  };
+  const r = wordGroups(["banana", "apple", "apricot", "apron", "Cherry", "2nd", "空调"], states);
+  assert.deepEqual(r.groups.map((g) => g.letter), ["A", "B", "C", "#"]);   // 无词的字母不出现,# 殿后
+  assert.deepEqual(r.groups[0].items, [
+    { w: "apple", status: "done" },                 // g=true → done
+    { w: "apricot", status: "fresh" },              // 无状态 → fresh
+    { w: "apron", status: "learning" },             // 有状态未毕业 → learning
+  ]);
+  assert.deepEqual(r.groups[3].items, [{ w: "2nd", status: "fresh" }, { w: "空调", status: "fresh" }]);
+});
+
+test("wordGroups:四态计数与空词表", () => {
+  const states = {
+    a: { ...newState(), g: true },
+    b: { ...newState() },
+  };
+  const r = wordGroups(["a", "b", "c", "d"], states);
+  assert.deepEqual(r.counts, { total: 4, done: 1, learning: 1, fresh: 2 });
+  const empty = wordGroups([], {});
+  assert.deepEqual(empty.counts, { total: 0, done: 0, learning: 0, fresh: 0 });
+  assert.deepEqual(empty.groups, []);
 });

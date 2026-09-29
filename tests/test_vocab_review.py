@@ -160,6 +160,40 @@ def test_build_uses_variant_as_display_when_lemma_unlisted(tmp_path):
     assert words["series"]["sents"][0]["en"] == "I love this series very much indeed."
 
 
+def test_build_drops_all_caps_abbreviation_candidates(tmp_path):
+    """全大写缩写(BBC/UN 型):≤5 字母 + 词条无标签 + 语料里每次出现都全大写 → 清洗;混合大小写幸存。"""
+    import build
+    db = _make_db(tmp_path, [
+        ("xzqq", "/zɪz/", "abbr. 测试缩写", "", 8000, ""),   # 无标签 + frq>5000 → candidate
+        ("gwow", "/ɡwɔ/", "n. 混合词", "", 8000, ""),        # 同上,但语料里混合大小写
+    ], name="abbr.db")
+    src = tmp_path / "docs4"; src.mkdir()
+    (src / "x.md").write_text(
+        "# 书X Unit 1\n\n---\n\n`0:00:01 → 0:00:05`\n\n"
+        "**The XZQQ meets XZQQ again. Gwow sings and gwow too.**\n", encoding="utf-8")
+    result = build.build(src, db, level="gk")
+    words = {w["w"]: w for w in result["words"]}
+    assert "xzqq" not in words                      # 全大写缩写 → dropped
+    assert "gwow" in words                          # 混合大小写 → 幸存
+    assert words["gwow"]["sents"][0]["en"] == "Gwow sings and gwow too."
+    assert result["stats"] == {"total": 8, "known": 0, "candidate": 1, "dropped": 7}
+
+
+def test_build_keeps_all_caps_known_words(tmp_path):
+    """带标签(zk/gk → 已会)的全大写词(OK 型)不受缩写清洗影响。"""
+    import build
+    db = _make_db(tmp_path, [
+        ("okbo", "/ˈəʊk/", "n. 高频词", "zk gk", 300, ""),
+    ], name="caps.db")
+    src = tmp_path / "docs5"; src.mkdir()
+    (src / "c.md").write_text(
+        "# 书C Unit 1\n\n---\n\n`0:00:01 → 0:00:05`\n\n"
+        "**OKBO works well here today.**\n", encoding="utf-8")
+    result = build.build(src, db, level="gk")
+    assert result["stats"] == {"total": 5, "known": 1, "candidate": 0, "dropped": 4}
+    assert all(w["w"] != "okbo" for w in result["words"])  # known 不进卡池(原有行为)
+
+
 def test_build_no_duplicate_display_words(tmp_path):
     """两个原形(gather/gathering)落到同一展示词(gathering)时只出一张卡。"""
     import build

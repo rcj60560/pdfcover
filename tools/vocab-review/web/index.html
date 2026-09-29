@@ -84,6 +84,27 @@
     <div class="legend"><i class="chip yes"></i>认识<i class="chip no"></i>不认识</div>
   </div>
 
+  <!-- 📖 词库总览:字母分节浏览全词池,标注学习状态 -->
+  <div class="screen listview" id="listView" hidden>
+    <div class="statsview-head">
+      <h2>📖 词库总览</h2>
+      <button class="close" id="listClose" aria-label="关闭">✕</button>
+    </div>
+    <p class="line" id="lvProgress">总数 – · 已毕业 –(0%)</p>
+    <div class="bar lv-bar"><i id="lvBarFill"></i></div>
+    <p class="line lv-sub" id="lvCounts">学习中 – · 未开始 –</p>
+    <div class="lv-filter">
+      <input type="search" id="lvSearch" placeholder="搜索单词" autocomplete="off">
+      <div class="chips" id="lvChips">
+        <button type="button" class="chipbtn on" data-f="all">全部</button>
+        <button type="button" class="chipbtn" data-f="fresh">未学</button>
+        <button type="button" class="chipbtn" data-f="learning">学习中</button>
+        <button type="button" class="chipbtn" data-f="done">已毕业</button>
+      </div>
+    </div>
+    <div class="lv-list" id="lvList" aria-label="词库列表"></div>
+  </div>
+
   <div class="screen" id="error" hidden>
     <div class="big">📡</div>
     <h2>词库加载失败</h2>
@@ -106,6 +127,7 @@
   <label class="file-btn">导入进度
     <input type="file" id="importFile" accept=".json,application/json" hidden>
   </label>
+  <button class="reveal" id="listBtn">📖 词库总览</button>
   <button class="reveal danger" id="resetBtn">🗑 重置进度</button>
   <p class="note">重置会清空全部复习状态与统计(词池不受影响),从头开始</p>
 </aside>

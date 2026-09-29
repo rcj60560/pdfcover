@@ -35,6 +35,32 @@ export function buildQueue(words, states, now, dailyLimit, meta) {
 
 export const STORAGE_KEY = "vocab-review-state-v1";
 
+/* ---------- 词库总览 ---------- */
+
+const byAlpha = (a, b) => (a < b ? -1 : a > b ? 1 : 0);
+
+/** 词库总览分组:按首字母分节 + 每词三态标注(fresh/learning/done)。
+ *  words = 词表(vocab.words.map(x=>x.w)),states = 进度盒 states。
+ *  非 a-z 开头的词归入 "#" 节,排在字母节之后;节内按字母序,无词的字母不出现。 */
+export function wordGroups(words, states) {
+  const st = states || {};
+  const counts = { total: words.length, done: 0, learning: 0, fresh: 0 };
+  const byLetter = new Map();
+  for (const w of words) {
+    const s = st[w];
+    const status = s ? (s.g ? "done" : "learning") : "fresh";
+    counts[status] += 1;
+    const first = w.charAt(0);
+    const letter = /[a-z]/i.test(first) ? first.toUpperCase() : "#";
+    if (!byLetter.has(letter)) byLetter.set(letter, []);
+    byLetter.get(letter).push({ w, status });
+  }
+  const groups = [...byLetter.entries()]
+    .map(([letter, items]) => ({ letter, items: items.sort((x, y) => byAlpha(x.w, y.w)) }))
+    .sort((x, y) => (x.letter === "#" ? 1 : y.letter === "#" ? -1 : byAlpha(x.letter, y.letter)));
+  return { counts, groups };
+}
+
 /* ---------- 统计 ---------- */
 
 function dayKey(now) {

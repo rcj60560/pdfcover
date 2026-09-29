@@ -92,7 +92,7 @@ def build(src_root: Path, ecdict_path: Path, level: str = "gk") -> dict:
 
     docs = sorted(p for p in src_root.rglob("*.md") if "`" in p.read_text(encoding="utf-8")[:400])
     sentences: list[tuple[str, str]] = []      # (句子, 来源)
-    token_case: dict[str, list[bool]] = {}     # token -> 是否首字母大写(专名判定)
+    token_case: dict[str, list[bool]] = {}     # token -> 每次出现是否全大写(缩写判定)
     counts: dict[str, int] = {}
     for path in docs:
         text = path.read_text(encoding="utf-8")
@@ -103,7 +103,7 @@ def build(src_root: Path, ecdict_path: Path, level: str = "gk") -> dict:
             for raw in re.findall(r"[A-Za-z]{2,}", line):
                 low = raw.lower()
                 counts[low] = counts.get(low, 0) + 1
-                token_case.setdefault(low, []).append(raw[0].isupper())
+                token_case.setdefault(low, []).append(raw.isupper())
 
     entries, lemmas = ecdict_mod.load_for_tokens(ecdict_path, set(counts))
 
@@ -111,7 +111,6 @@ def build(src_root: Path, ecdict_path: Path, level: str = "gk") -> dict:
     lemma_counts: dict[str, int] = {}
     lemma_variants: dict[str, set[str]] = {}
     for token, n in counts.items():
-        always_cap = all(token_case[token]) and counts[token] >= 2
         stats["total"] += 1 if lemmas[token] not in lemma_counts else 0
         lemma_counts[lemmas[token]] = lemma_counts.get(lemmas[token], 0) + n
         lemma_variants.setdefault(lemmas[token], set()).add(token)
@@ -123,6 +122,13 @@ def build(src_root: Path, ecdict_path: Path, level: str = "gk") -> dict:
         kind = classify(entry, level)
         if len(lemma) <= 3 and kind != "known":
             stats["dropped"] += 1  # 短碎片词(don/t/s 之类残片)不可能成为卡片
+            continue
+        # 全大写缩写(BBC/UN/GDP 型):≤5 字母 + 词条无标签 + 语料里所有变体的
+        # 每次出现都全大写 → 不是可学习的单词,清洗掉(known 词如 OK 不受影响)
+        if (kind != "known" and len(lemma) <= 5 and entry is not None
+                and not (entry["tag"] or "").strip()
+                and all(all(token_case[t]) for t in lemma_variants[lemma])):
+            stats["dropped"] += 1
             continue
         if kind == "drop" or (entry is None and lemma_counts[lemma] < 2):
             stats["dropped"] += 1
