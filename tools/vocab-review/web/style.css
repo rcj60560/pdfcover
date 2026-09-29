@@ -146,3 +146,13 @@ body {
 
 /* 重置按钮:危险操作红字 */
 .reveal.danger { color: var(--no); border-color: var(--no); }
+
+/* 顶部本地检索:输入即搜 */
+.searchbar { margin: 0 0 10px; }
+.searchbar input {
+  width: 100%; min-height: 44px; padding: 10px 14px; box-sizing: border-box;
+  border: 1.5px solid #c9bdf0; border-radius: 12px; background: var(--card);
+  color: var(--ink); font-size: 15px;
+}
+.searchbar input:focus { outline: 2px solid var(--violet); }
+.searchview { margin-bottom: 10px; }

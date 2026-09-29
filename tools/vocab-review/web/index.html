@@ -34,6 +34,15 @@
     <span id="progPct">0%</span>
   </div>
 
+  <!-- 顶部本地检索:输入即搜全词池 -->
+  <div class="searchbar">
+    <input type="search" id="homeSearch" placeholder="🔍 搜索单词——本地即时检索" autocomplete="off">
+  </div>
+  <div class="searchview" id="searchView" hidden>
+    <p class="line" id="searchCount"></p>
+    <div class="lv-list" id="searchList"></div>
+  </div>
+
   <!-- 卡片:词 + 释义 + 例句一次全显 -->
   <div class="flash" id="flash">
     <div class="src" id="src">生词候选 · 来自词池</div>

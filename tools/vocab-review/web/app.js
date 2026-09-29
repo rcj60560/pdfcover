@@ -167,12 +167,68 @@ function render() {
   renderProgress();
   $("done").hidden = true;
   $("error").hidden = true;
+  if (searchQ) { renderSearch(); return; }   // 检索态:不展示卡片/完成屏
+  $("searchView").hidden = true;
   if (!queue.length) { showDone(); return; }
   $("flash").hidden = false;
   $("judge").hidden = false;
   $("hint").hidden = false;
   renderCard();
 }
+
+/* ---------- 顶部本地检索:输入即搜全词池 ---------- */
+let searchQ = "";
+const SEARCH_MAX = 30;
+
+function statusOf(w) {
+  const s = box.states[w];
+  return s ? (s.g ? "done" : "learning") : "fresh";
+}
+
+function renderSearch() {
+  const q = searchQ.toLowerCase();
+  const matches = vocab.words.filter((x) => x.w.toLowerCase().includes(q));
+  hideCardArea();
+  $("done").hidden = true;
+  $("error").hidden = true;
+  $("searchCount").textContent = matches.length
+    ? `「${searchQ}」共 ${fmt(matches.length)} 个匹配${matches.length > SEARCH_MAX ? ` · 显示前 ${SEARCH_MAX} 个` : ""}`
+    : `「${searchQ}」没有匹配的单词`;
+  const list = $("searchList");
+  list.textContent = "";
+  const frag = document.createDocumentFragment();
+  for (const x of matches.slice(0, SEARCH_MAX)) {
+    const row = document.createElement("div");
+    row.className = "lv-row";
+    row.addEventListener("click", () => speak(x.w));
+    const main = document.createElement("div");
+    main.className = "lv-main";
+    const wordBtn = document.createElement("button");
+    wordBtn.type = "button";
+    wordBtn.className = "lv-word";
+    wordBtn.textContent = x.w;
+    const def = document.createElement("div");
+    def.className = "lv-def";
+    def.textContent = [x.phon, x.def].filter(Boolean).join(" · ");
+    main.append(wordBtn, def);
+    const tag = document.createElement("span");
+    const st = statusOf(x.w);
+    tag.className = `lv-tag ${st}`;
+    tag.textContent = LV_LABEL[st];
+    row.append(main, tag);
+    frag.append(row);
+  }
+  list.append(frag);
+  $("searchView").hidden = false;
+}
+
+$("homeSearch").addEventListener("input", (e) => {
+  searchQ = e.target.value.trim();
+  render();
+});
+$("homeSearch").addEventListener("keydown", (e) => {
+  if (e.key === "Escape") { e.target.value = ""; searchQ = ""; render(); }
+});
 
 function hideCardArea() {
   $("flash").hidden = true;
