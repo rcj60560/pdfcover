@@ -150,6 +150,13 @@
   <label class="field check">自动发音(切到新卡即朗读)
     <input type="checkbox" id="autoSpeak" checked>
   </label>
+  <div class="field">发音偏好(有道真人发音,断网自动回退系统语音)
+    <div class="chips">
+      <button type="button" class="chipbtn" id="accentUk">🇬🇧 英音</button>
+      <button type="button" class="chipbtn" id="accentUs">🇺🇸 美音</button>
+      <button type="button" class="chipbtn" id="speakTest">▶ 试听</button>
+    </div>
+  </div>
   <button class="reveal" id="exportBtn">导出进度</button>
   <label class="file-btn">导入进度
     <input type="file" id="importFile" accept=".json,application/json" hidden>

@@ -12,7 +12,7 @@ const $ = (id) => document.getElementById(id);
 let vocab = null;            // vocab.json 全文
 let vocabIndex = new Map();  // w → 词条
 let box = null;              // 进度盒 {states, meta}
-let settings = { dailyLimit: 20, autoSpeak: true };
+let settings = { dailyLimit: 20, autoSpeak: true, accent: "us" };
 let queue = [];              // 今日队列(队首 = 当前卡)
 let judged = 0;              // 本次会话已判定张数(进度条分子)
 let reviewed = 0;            // 本次会话判定的复习张数
@@ -63,7 +63,18 @@ if (canSpeak && window.speechSynthesis.addEventListener) {
   window.speechSynthesis.addEventListener("voiceschanged", () => { enVoice = null; pickVoice(); });
 }
 
+let lastAudio = null;   // 有道发音的 <audio>,换卡时停掉上一段
+
+/** 有道词典真人发音(默认);网络失败自动回退系统 TTS */
 function speak(text) {
+  try { if (lastAudio) { lastAudio.pause(); lastAudio = null; } } catch { /* 忽略 */ }
+  const a = new Audio(
+    `https://dict.youdao.com/dictvoice?audio=${encodeURIComponent(text)}&type=${settings.accent === "uk" ? 1 : 2}`);
+  lastAudio = a;
+  a.play().catch(() => ttsSpeak(text));   // 断网/被拦截 → 系统 TTS 兜底
+}
+
+function ttsSpeak(text) {
   if (!canSpeak) return;
   try {
     window.speechSynthesis.cancel();
@@ -91,10 +102,11 @@ function loadSettings() {
       return {
         dailyLimit: Number.isFinite(n) && n >= 1 ? Math.round(n) : 20,
         autoSpeak: typeof saved.autoSpeak === "boolean" ? saved.autoSpeak : true,
+        accent: saved.accent === "uk" ? "uk" : "us",
       };
     }
   } catch { /* 读不到就用默认 */ }
-  return { dailyLimit: 20, autoSpeak: true };
+  return { dailyLimit: 20, autoSpeak: true, accent: "us" };
 }
 
 function saveSettings() {
@@ -551,6 +563,8 @@ async function init() {
   settings = loadSettings();
   $("dailyLimit").value = String(settings.dailyLimit);
   $("autoSpeak").checked = settings.autoSpeak;
+  $("accentUk").classList.toggle("on", settings.accent === "uk");
+  $("accentUs").classList.toggle("on", settings.accent === "us");
   if (!canSpeak) document.body.classList.add("nospeak"); // 无语音合成则藏起 🔊
 
   let data;
@@ -711,3 +725,14 @@ $("autoSpeak").addEventListener("change", (e) => {
   settings.autoSpeak = e.target.checked;
   saveSettings();
 });
+
+/* 发音偏好:英音/美音(有道 type 1/2),即时生效 + 试听 */
+$("accentUk").addEventListener("click", () => setAccent("uk"));
+$("accentUs").addEventListener("click", () => setAccent("us"));
+function setAccent(a) {
+  settings.accent = a;
+  saveSettings();
+  $("accentUk").classList.toggle("on", a === "uk");
+  $("accentUs").classList.toggle("on", a === "us");
+}
+$("speakTest").addEventListener("click", () => speak("vocabulary"));

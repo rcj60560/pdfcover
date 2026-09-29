@@ -204,3 +204,6 @@ body { background: var(--inset); font-family: system-ui, "Microsoft YaHei", sans
 /* 设置面板复选行 */
 .field.check { flex-direction: row; align-items: center; gap: 10px; }
 .field.check input { width: 20px; height: 20px; accent-color: var(--violet); }
+
+/* 发音偏好按钮组 */
+.field .chips { margin-top: 4px; }
