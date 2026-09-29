@@ -248,3 +248,113 @@ def test_build_no_duplicate_display_words(tmp_path):
     assert ws.count("gathering") == 1              # 展示词去重,一张卡
     assert len(ws) == len(set(ws))
     assert result["stats"]["candidate"] == 2       # 原形层面各计一次候选
+
+
+# ---------- enrich:雅思词书增强层 ----------
+
+def _yd_entry(head, *, ukphone="", trans=(), sents=(), phrases=()):
+    """造一行有道/新东方词书 JSONL 记录:trans=(pos,tranCn,tranOther),sents/phrases=(en,cn)。"""
+    import json
+    return {
+        "headWord": head, "bookId": "test",
+        "content": {"word": {"wordHead": head, "content": {
+            "ukphone": ukphone,
+            "trans": [{"pos": p, "tranCn": cn, "tranOther": en} for p, cn, en in trans],
+            "sentence": {"sentences": [{"sContent": en, "sCn": cn} for en, cn in sents]},
+            "phrase": {"phrases": [{"pContent": en, "pCn": cn} for en, cn in phrases]},
+        }}},
+    }
+
+
+def _write_book(tmp_path, name, entries):
+    """写 JSONL 词书:一行一个 JSON 对象,行间夹空行(解析须跳过)。"""
+    import json
+    p = tmp_path / name
+    p.write_text("\n\n".join(json.dumps(e, ensure_ascii=False) for e in entries) + "\n",
+                 encoding="utf-8")
+    return p
+
+
+def test_enrich_populates_endef_phrases_ydsents(tmp_path):
+    import enrich
+    vocab = {"version": 1, "words": [
+        {"w": "sensible", "phon": "/s/", "def": "adj. 明智的", "tags": "cet6",
+         "sents": [{"en": "old", "from": "书"}]},
+    ]}
+    b1 = _write_book(tmp_path, "yd.jsonl", [_yd_entry(
+        "Sensible", ukphone="'sensɪbl",                       # headWord 大小写不一致也能命中
+        trans=[("adj", "明智的", "reasonable, practical")],
+        sents=[("She seems very sensible.", "她好像很明智。"),
+               ("sensible advice", "合理的建议"),
+               ("third not shown", "第三条不取")],
+        phrases=[("  sensible of  ", "察觉"), ("sensible heat", "显热"),
+                 ("sensible plan", "明智计划"), ("fourth", "第四条不取")])])
+    b2 = _write_book(tmp_path, "xdf.jsonl", [])
+    out, n = enrich.enrich(vocab, [b1, b2])
+    w = out["words"][0]
+    assert n == 1
+    assert w["enDef"] == "reasonable, practical"
+    assert w["phrases"] == [{"en": "sensible of", "cn": "察觉"},        # strip + 取前 3
+                            {"en": "sensible heat", "cn": "显热"},
+                            {"en": "sensible plan", "cn": "明智计划"}]
+    assert w["ydSents"] == [{"en": "She seems very sensible.", "cn": "她好像很明智。"},   # 取前 2
+                            {"en": "sensible advice", "cn": "合理的建议"}]
+    assert w["phon"] == "/s/" and w["def"] == "adj. 明智的"            # 已有字段一律不动
+    assert w["sents"] == [{"en": "old", "from": "书"}]
+    assert "enDef" not in vocab["words"][0] and vocab["words"][0]["phon"] == "/s/"  # 纯函数:不改入参
+    assert out is not vocab and out["version"] == 1                    # 其余顶层字段原样保留
+
+
+def test_enrich_skips_words_missing_from_books(tmp_path):
+    import enrich
+    vocab = {"words": [{"w": "zzz", "phon": "", "def": "n. 未知", "tags": "", "sents": []}]}
+    b1 = _write_book(tmp_path, "yd.jsonl", [_yd_entry("other", trans=[("n", "x", "some def")])])
+    out, n = enrich.enrich(vocab, [b1])
+    assert n == 0
+    assert out["words"][0] == vocab["words"][0]      # 词书没命中:原样,无新键
+    assert set(out["words"][0]) == {"w", "phon", "def", "tags", "sents"}
+
+
+def test_enrich_omits_endef_when_tran_other_empty(tmp_path):
+    import enrich
+    vocab = {"words": [{"w": "cancel", "phon": "/k/", "def": "v. 取消", "tags": "", "sents": []}]}
+    b1 = _write_book(tmp_path, "yd.jsonl", [
+        _yd_entry("cancel", trans=[("v", "取消", "")], sents=[], phrases=[])])
+    out, n = enrich.enrich(vocab, [b1])
+    assert n == 0                                   # 什么都没加上 → 不计数
+    for k in ("enDef", "phrases", "ydSents"):
+        assert k not in out["words"][0]             # 无内容则不落键
+
+
+def test_enrich_dedups_endef_and_merges_phrases_across_books(tmp_path):
+    import enrich
+    vocab = {"words": [{"w": "reclaim", "phon": "/r/", "def": "vt. 回收", "tags": "", "sents": []}]}
+    b1 = _write_book(tmp_path, "yd.jsonl", [_yd_entry(   # 有道(排前)
+        "reclaim",
+        trans=[("v", "开垦", "to make land suitable for farming")],
+        sents=[("They reclaim the land.", "他们开垦土地。")],
+        phrases=[("reclaim land", "开垦土地")])])
+    b2 = _write_book(tmp_path, "xdf.jsonl", [_yd_entry(  # 新东方(排后)
+        "reclaim",
+        trans=[("v", "开垦", "to make land suitable for farming"),   # 与有道重复
+               ("vt", "收回", "to get money back")],
+        sents=[("Wrong book sentence.", "不该出现。")],
+        phrases=[("reclaim land", "开垦土地"), ("reclaim materials", "回收材料")])])
+    out, n = enrich.enrich(vocab, [b1, b2])
+    w = out["words"][0]
+    assert n == 1
+    assert w["enDef"] == "to make land suitable for farming ; to get money back"  # 跨书去重连接
+    assert w["ydSents"] == [{"en": "They reclaim the land.", "cn": "他们开垦土地。"}]  # 例句:排前(有道)词书优先
+    assert w["phrases"] == [{"en": "reclaim land", "cn": "开垦土地"},   # 短语跨书合并,按原文去重
+                            {"en": "reclaim materials", "cn": "回收材料"}]
+
+
+def test_enrich_fills_empty_phon_with_ukphone(tmp_path):
+    import enrich
+    vocab = {"words": [{"w": "sensible", "phon": "", "def": "adj. 明智的", "tags": "", "sents": []}]}
+    b1 = _write_book(tmp_path, "yd.jsonl", [
+        _yd_entry("sensible", ukphone="'sensɪb(ə)l", trans=[("adj", "明智的", "reasonable")])])
+    out, n = enrich.enrich(vocab, [b1])
+    assert n == 1                                    # 补音标也算增强
+    assert out["words"][0]["phon"] == "'sensɪb(ə)l"  # 词池为空 → 用词书 ukphone 补
+    assert vocab["words"][0]["phon"] == ""           # 不改入参

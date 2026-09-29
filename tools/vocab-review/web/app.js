@@ -101,6 +101,68 @@ function fillSentence(p, text, word) {
   p.append(text.slice(last));
 }
 
+/* ---------- 雅思词书增强层:可选字段缺失则不渲染,主站旧词库照常工作 ---------- */
+
+/** 英英释义 + 短语 → 片段(enDef 一行 + phrases 最多 3 行);无内容返回 null */
+function enrichFrag(item) {
+  const frag = document.createDocumentFragment();
+  if (item.enDef) {
+    const d = document.createElement("div");
+    d.className = "enDef";
+    d.textContent = `🇬🇧 ${item.enDef}`;
+    frag.append(d);
+  }
+  const phs = (item.phrases || []).filter((p) => p && p.en);
+  if (phs.length) {
+    const box = document.createElement("div");
+    box.className = "phrases";
+    for (const p of phs.slice(0, 3)) {
+      const line = document.createElement("div");
+      line.textContent = p.cn ? `▪ ${p.en} — ${p.cn}` : `▪ ${p.en}`;
+      box.append(line);
+    }
+    frag.append(box);
+  }
+  return frag.childElementCount ? frag : null;
+}
+
+/** 换掉上一个增强层容器(插在 def 与例句容器之间),返回新容器(无内容为 null) */
+function swapEnrich(prev, item, exsEl) {
+  if (prev) prev.remove();
+  const frag = enrichFrag(item);
+  if (!frag) return null;
+  const wrap = document.createElement("div");
+  wrap.append(frag);
+  exsEl.before(wrap);
+  return wrap;
+}
+
+/** 有道词书例句:最多 2 条,接在语料例句后;英语行高亮目标词,附中文译文 */
+function appendYdSents(exsEl, item, w) {
+  for (const s of (item.ydSents || []).slice(0, 2)) {
+    if (!s || !s.en) continue;
+    const ex = document.createElement("div");
+    ex.className = "ex";
+    const p = document.createElement("p");
+    fillSentence(p, s.en, w);
+    ex.append(p);
+    if (s.cn) {
+      const cn = document.createElement("span");
+      cn.className = "ex-cn";
+      cn.textContent = `译 ${s.cn}`;
+      ex.append(cn);
+    }
+    const from = document.createElement("span");
+    from.className = "from";
+    from.textContent = "📖 雅思词书(有道)";
+    ex.append(from);
+    exsEl.append(ex);
+  }
+}
+
+let cardEnrich = null;   // 当前卡增强层容器(enDef/phrases)
+let detailEnrich = null; // 详情页增强层容器
+
 function renderCard() {
   const readonly = viewIndex > 0;
   const w = readonly ? history[history.length - viewIndex] : queue[0];
@@ -112,6 +174,7 @@ function renderCard() {
   $("def").textContent = item.def || "";
   const exs = $("exs");
   exs.textContent = "";
+  cardEnrich = swapEnrich(cardEnrich, item, exs); // 英英/短语增强层:插在释义与例句之间
   for (const sent of (item.sents || []).slice(0, 2)) {
     const ex = document.createElement("div");
     ex.className = "ex";
@@ -123,6 +186,7 @@ function renderCard() {
     ex.append(p, from);
     exs.append(ex);
   }
+  appendYdSents(exs, item, w);                     // 有道例句:接在语料例句之后
   // 回看导航
   $("nav").hidden = history.length === 0;
   $("prevBtn").disabled = viewIndex >= history.length;
@@ -242,6 +306,7 @@ function openDetail(w) {
   $("dvDef").textContent = item.def || "";
   const exs = $("dvExs");
   exs.textContent = "";
+  detailEnrich = swapEnrich(detailEnrich, item, exs); // 英英/短语增强层:插在释义与例句之间
   for (const sent of (item.sents || []).slice(0, 2)) {
     const ex = document.createElement("div");
     ex.className = "ex";
@@ -253,6 +318,7 @@ function openDetail(w) {
     ex.append(p, from);
     exs.append(ex);
   }
+  appendYdSents(exs, item, w);                          // 有道例句:接在语料例句之后
   const s = box.states[w];
   const statusLine = s ? (s.g ? "🎓 已毕业" : `学习中 · 下次复习 ${new Date(s.due).toLocaleDateString("zh-CN")}`)
     : "未开始";
