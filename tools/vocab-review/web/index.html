@@ -150,6 +150,13 @@
   <label class="field check">自动发音(切到新卡即朗读)
     <input type="checkbox" id="autoSpeak" checked>
   </label>
+  <div class="field">云同步(手机/电脑共用一本进度账;判定自动同步)
+    <div class="chips">
+      <button type="button" class="chipbtn" id="syncNow">⟳ 立即同步</button>
+    </div>
+    <label class="field check" style="margin-top:8px"><input type="checkbox" id="cloudSync" checked> 启用云同步</label>
+    <p class="note" id="syncInfo">尚未同步</p>
+  </div>
   <div class="field">发音偏好(有道真人发音,断网自动回退系统语音)
     <div class="chips">
       <button type="button" class="chipbtn" id="accentUk">🇬🇧 英音</button>

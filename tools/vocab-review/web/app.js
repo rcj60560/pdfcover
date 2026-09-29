@@ -12,7 +12,7 @@ const $ = (id) => document.getElementById(id);
 let vocab = null;            // vocab.json 全文
 let vocabIndex = new Map();  // w → 词条
 let box = null;              // 进度盒 {states, meta}
-let settings = { dailyLimit: 20, autoSpeak: true, accent: "us" };
+let settings = { dailyLimit: 20, autoSpeak: true, accent: "us", cloudSync: true };
 let queue = [];              // 今日队列(队首 = 当前卡)
 let judged = 0;              // 本次会话已判定张数(进度条分子)
 let reviewed = 0;            // 本次会话判定的复习张数
@@ -103,14 +103,65 @@ function loadSettings() {
         dailyLimit: Number.isFinite(n) && n >= 1 ? Math.round(n) : 20,
         autoSpeak: typeof saved.autoSpeak === "boolean" ? saved.autoSpeak : true,
         accent: saved.accent === "uk" ? "uk" : "us",
+        cloudSync: saved.cloudSync !== false,
       };
     }
   } catch { /* 读不到就用默认 */ }
-  return { dailyLimit: 20, autoSpeak: true, accent: "us" };
+  return { dailyLimit: 20, autoSpeak: true, accent: "us", cloudSync: true };
 }
 
 function saveSettings() {
   try { localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings)); } catch { /* 隐私模式 */ }
+}
+
+/* ---------- 云同步(单人,密钥即身份):打开拉新,判定后推云 ---------- */
+const SYNC_URL = "http://47.108.230.162/script/vocab-sync/?key=618e8366b102144c9a22a88a90aedaebfde5e37e49b54ae2";
+let pushTimer = 0;
+
+function remoteNewer(remote) {
+  return Boolean(remote && remote.states && remote.meta)
+    && ((remote.meta.savedAt || 0) > (box.meta.savedAt || 0));
+}
+
+async function syncPull(manual = false) {
+  if (settings.cloudSync === false) return false;
+  try {
+    const res = await fetch(SYNC_URL);
+    const remote = await res.json();
+    if (remote && remote.none) { if (manual) toast("云端还没有进度,已用本地"); return false; }
+    if (remoteNewer(remote)) {
+      box = mergeImport(box, remote);   // 云端较新:整本采纳(单人顺序使用,后写为准)
+      saveState(box);
+      if (manual) toast("已拉取云端进度");
+      return true;
+    }
+    if (manual) toast("本地已是最新的了");
+  } catch {
+    if (manual) toast("云端连不上(稍后自动重试)");
+  }
+  return false;
+}
+
+function syncPush(manual = false) {
+  if (settings.cloudSync === false) return;
+  box.meta.savedAt = Date.now();
+  saveState(box);
+  const payload = JSON.stringify({ states: box.states, meta: box.meta });
+  fetch(SYNC_URL, { method: "POST", body: payload })
+    .then((r) => {
+      if (!r.ok) return;
+      settings.lastSyncAt = Date.now();
+      saveSettings();
+      const info = $("syncInfo");
+      if (info) info.textContent = `上次同步 ${new Date(settings.lastSyncAt).toLocaleString("zh-CN")}`;
+      if (manual) toast("已同步到云端");
+    })
+    .catch(() => { if (manual) toast("推送失败,稍后自动重试"); });
+}
+
+function schedulePush() {   // 判定后防抖推送:连点不刷屏
+  clearTimeout(pushTimer);
+  pushTimer = setTimeout(() => syncPush(false), 1500);
 }
 
 /* ---------- 统计 / 进度 ---------- */
@@ -255,6 +306,7 @@ function judge(yes) {
   const next = (yes ? answerYes : answerNo)(box.states[w] || newState(), now);
   box.states[w] = next;
   saveState(box); // 判定即落盘
+  schedulePush(); // 防抖推云
   if (next.g) toast(`🎓 ${w} 毕业!`); // 队列里的词必非毕业态,next.g 即刚毕业
   if (!yes) queue.splice(Math.min(10, queue.length), 0, w); // 隔 10 张重现,至多插到队尾
   history.push(w);
@@ -565,6 +617,8 @@ async function init() {
   $("autoSpeak").checked = settings.autoSpeak;
   $("accentUk").classList.toggle("on", settings.accent === "uk");
   $("accentUs").classList.toggle("on", settings.accent === "us");
+  $("cloudSync").checked = settings.cloudSync !== false;
+  if (settings.lastSyncAt) $("syncInfo").textContent = `上次同步 ${new Date(settings.lastSyncAt).toLocaleString("zh-CN")}`;
   if (!canSpeak) document.body.classList.add("nospeak"); // 无语音合成则藏起 🔊
 
   let data;
@@ -582,8 +636,10 @@ async function init() {
   vocabIndex = new Map(vocab.words.map((x) => [x.w, x]));
   box = loadState();
   if (!box.storageOk) $("warn").hidden = false; // 存不进去:顶部横幅提醒
+  const pulled = await syncPull(false);        // 开屏先拉云端(单人:云端较新则整本采纳)
   rebuildQueue();
   render();
+  if (!pulled) syncPush(false);                // 云端没有/更旧:把本地推上去(另一台设备随后可见)
 }
 
 /* ---------- 事件 ---------- */
@@ -736,3 +792,21 @@ function setAccent(a) {
   $("accentUs").classList.toggle("on", a === "us");
 }
 $("speakTest").addEventListener("click", () => speak("vocabulary"));
+
+/* 云同步:关页兜底推送 */
+document.addEventListener("visibilitychange", () => {
+  if (document.visibilityState === "hidden") { clearTimeout(pushTimer); syncPush(false); }
+});
+
+/* 设置面板:云同步开关 + 立即同步 */
+$("cloudSync").addEventListener("change", (e) => {
+  settings.cloudSync = e.target.checked;
+  saveSettings();
+  if (settings.cloudSync) syncPush(false);   // 重新打开:先把本地推上去
+});
+$("syncNow").addEventListener("click", async () => {
+  const pulledNow = await syncPull(true);
+  if (!pulledNow) syncPush(true);
+  rebuildQueue();
+  render();
+});
