@@ -230,6 +230,7 @@ function openStats() {
   hideCardArea();
   $("done").hidden = true;
   $("listView").hidden = true; // 整卡画面互斥:总览开着时切到统计
+  listOpen = false;
   const s = summarize(vocab.words.map((x) => x.w), box.states, box.meta, vocab.stats);
   $("svTotal").textContent = fmt(s.total);
   $("svGrad").textContent = fmt(s.graduated);
@@ -312,6 +313,15 @@ function openList() {
 
 function closeList() {
   listOpen = false;
+  $("listView").hidden = true;
+  render();
+}
+
+/** 统计/总览都可能在开着(导入进度会改词池状态):一并复位再回卡片/完成画面。 */
+function closeOverlays() {
+  statsOpen = false;
+  listOpen = false;
+  $("statsView").hidden = true;
   $("listView").hidden = true;
   render();
 }
@@ -440,8 +450,7 @@ $("importFile").addEventListener("change", () => {
     }
     saveState(box);
     rebuildQueue();
-    closeStats(); // 统计页可能开着:一并关掉再回到卡片/完成画面
-    if (listOpen) renderList(); // 总览开着:进度已变,就地重绘
+    closeOverlays(); // 统计/总览可能开着:一并关掉再回到卡片/完成画面
     $("panel").classList.remove("open");
     toast("已导入");
     input.value = ""; // 允许再次选同一文件
