@@ -20,43 +20,45 @@ body { background: var(--inset); font-family: system-ui, "Microsoft YaHei", sans
 @media (min-width: 700px) {
   body { background: var(--inset); padding: 28px 12px; }
   .phone { border-radius: 16px; box-shadow: 0 8px 24px rgba(116, 118, 122, .3); }
-  .word-row .word { font-size: 38px; }
-  .def { font-size: 16px; }
+  .word-row .word { font-size: 36px; }
+  .def { font-size: 15.5px; }
+  .ex p { font-size: 14px; }
+  .flash { padding: 20px 18px 16px; }
 }
 
 ::-webkit-scrollbar { width: 8px; }
 ::-webkit-scrollbar-thumb { background: #c4c9ce; border-radius: 4px; }
 
 /* 顶栏 + 统计 */
-.top { display: flex; align-items: baseline; justify-content: space-between; padding: 4px 6px 10px; }
+.top { display: flex; align-items: baseline; justify-content: space-between; padding: 2px 6px 8px; }
 .top h1 { font-size: 18px; color: var(--ink); font-weight: 700; }
 .top-actions { display: flex; gap: 2px; }
 .top .gear { color: var(--muted); font-size: 20px; background: none; border: none; cursor: pointer; padding: 4px 6px; border-radius: 8px; }
 .top .gear:hover { color: var(--ink); background: var(--hover); }
 
-.stats { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; margin-bottom: 12px; }
-.stat { background: var(--card); border-radius: 8px; padding: 10px 4px; text-align: center; }
-.stat b { display: block; font-size: 17px; color: var(--ink); font-variant-numeric: tabular-nums; }
+.stats { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; margin-bottom: 10px; }
+.stat { background: var(--card); border-radius: 8px; padding: 8px 4px; text-align: center; }
+.stat b { display: block; font-size: 16px; color: var(--ink); font-variant-numeric: tabular-nums; }
 .stat span { font-size: 10px; color: var(--muted); }
 
 /* 今日进度 */
-.progress { display: flex; align-items: center; gap: 8px; margin: 0 4px 12px; font-size: 12px; color: var(--muted); }
+.progress { display: flex; align-items: center; gap: 8px; margin: 0 4px 10px; font-size: 11.5px; color: var(--muted); }
 .bar { flex: 1; height: 6px; border-radius: 3px; background: var(--inset); overflow: hidden; }
 .bar i { display: block; height: 100%; width: 0; background: var(--violet); border-radius: 3px; transition: width .25s; }
 
 /* 卡片:词 + 音标 + 释义 + 例句一次全显 */
-.flash { background: var(--card); border-radius: 12px; padding: 22px 18px 16px; text-align: center; min-height: 260px; display: flex; flex-direction: column; align-items: stretch; }
+.flash { background: var(--card); border-radius: 12px; padding: 14px 14px 12px; text-align: center; min-height: 0; display: flex; flex-direction: column; align-items: stretch; }
 .src { font-size: 11px; color: var(--muted); text-transform: uppercase; letter-spacing: .04em; }
 .word-row { display: flex; align-items: center; justify-content: center; gap: 10px; margin-top: 8px; }
-.word-row .word { font-size: 34px; font-weight: 700; color: var(--ink); overflow-wrap: anywhere; }
+.word-row .word { font-size: 30px; font-weight: 700; color: var(--ink); overflow-wrap: anywhere; }
 .speak { border: none; background: var(--violet-soft); color: var(--violet); font-size: 17px; border-radius: 999px; cursor: pointer; }
 .speak.inline { padding: 9px 13px; flex: none; }
 .speak:hover { background: var(--violet); color: #fff; }
 .nospeak .speak { display: none; } /* 无 speechSynthesis 时隐藏 🔊 */
-.phon.meta { font-size: 13px; color: var(--muted); margin-top: 5px; min-height: 1em; }
-.def { margin-top: 12px; font-size: 15.5px; line-height: 1.75; color: #2e3338; text-align: left; }
-.ex { margin-top: 12px; background: var(--bg); border-left: 3px solid var(--violet); border-radius: 6px; padding: 10px 12px; text-align: left; }
-.ex p { font-size: 14px; line-height: 1.6; color: #2e3338; }
+.phon.meta { font-size: 12.5px; color: var(--muted); margin-top: 5px; min-height: 1em; }
+.def { margin-top: 10px; font-size: 14px; line-height: 1.6; color: #2e3338; text-align: left; }
+.ex { margin-top: 10px; background: var(--bg); border-left: 3px solid var(--violet); border-radius: 6px; padding: 8px 10px; text-align: left; }
+.ex p { font-size: 13px; line-height: 1.55; color: #2e3338; }
 .ex .from { display: block; font-size: 11px; color: var(--muted); margin-top: 6px; }
 .ex .hit { color: var(--violet); font-weight: 700; }
 
@@ -68,8 +70,8 @@ body { background: var(--inset); font-family: system-ui, "Microsoft YaHei", sans
 .navinfo { font-size: 12px; color: var(--muted); }
 
 /* 判定按钮:始终可见(≥52px 拇指目标);回看时禁用 */
-.judge { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 12px; }
-.btn { border: none; border-radius: 8px; padding: 13px 10px; min-height: 52px; font-size: 16px; font-weight: 600; cursor: pointer; }
+.judge { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 10px; }
+.btn { border: none; border-radius: 8px; padding: 11px 10px; min-height: 50px; font-size: 15px; font-weight: 600; cursor: pointer; }
 .btn:disabled { opacity: .45; cursor: default; }
 .btn.no { background: rgba(216, 60, 62, .12); color: var(--no); }
 .btn.no:hover:not(:disabled) { background: rgba(216, 60, 62, .2); }
@@ -77,7 +79,7 @@ body { background: var(--inset); font-family: system-ui, "Microsoft YaHei", sans
 .btn.yes:hover:not(:disabled) { background: rgba(26, 139, 74, .2); }
 .btn small { display: block; font-size: 10px; font-weight: 400; opacity: .75; margin-top: 3px; }
 
-.hint { text-align: center; font-size: 11px; color: var(--muted); margin-top: 10px; }
+.hint { text-align: center; font-size: 10px; color: var(--muted); margin-top: 8px; }
 
 /* 隐私模式提醒横幅 */
 .warn { background: rgba(240, 170, 30, .15); color: #8a6200; border-radius: 8px; padding: 10px 12px; font-size: 12.5px; line-height: 1.5; margin-bottom: 10px; }
@@ -165,9 +167,9 @@ body { background: var(--inset); font-family: system-ui, "Microsoft YaHei", sans
 .reveal.danger:hover { background: rgba(216, 60, 62, .2); }
 
 /* 顶部本地检索:输入即搜 */
-.searchbar { margin: 0 0 10px; }
+.searchbar { margin: 0 0 8px; }
 .searchbar input {
-  width: 100%; min-height: 44px; padding: 10px 14px; box-sizing: border-box;
+  width: 100%; min-height: 40px; padding: 8px 12px; box-sizing: border-box;
   border: 1px solid var(--line); border-radius: 8px; background: var(--inset);
   color: var(--ink); font-size: 15px;
 }
@@ -179,3 +181,15 @@ body { background: var(--inset); font-family: system-ui, "Microsoft YaHei", sans
 /* 单词详情页 */
 .detailview .flash { min-height: 0; margin: 10px 0; }
 .detailview .line { text-align: center; color: var(--muted); }
+
+/* 手机一屏化:锁定视口高度,卡片区内部滚动,判定按钮常驻屏底 */
+@media (max-width: 699px) {
+  html, body { height: 100%; }
+  .phone { height: 100dvh; display: flex; flex-direction: column; overflow: hidden; padding: 10px 12px 12px; }
+  .flash { flex: 1; min-height: 0; overflow-y: auto; }
+  .judge, .nav, .hint { flex: none; }
+  .screen { flex: 1; min-height: 0; overflow-y: auto; }
+  .searchview { flex: 1; min-height: 0; display: flex; flex-direction: column; }
+  .searchview .lv-list { flex: 1; max-height: none; }
+  .lv-list { max-height: none; }
+}
