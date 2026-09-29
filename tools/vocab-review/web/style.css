@@ -156,3 +156,7 @@ body {
 }
 .searchbar input:focus { outline: 2px solid var(--violet); }
 .searchview { margin-bottom: 10px; }
+
+/* 单词详情页 */
+.detailview .flash { min-height: 0; margin: 10px 0; }
+.detailview .line { text-align: center; }

@@ -200,7 +200,7 @@ function renderSearch() {
   for (const x of matches.slice(0, SEARCH_MAX)) {
     const row = document.createElement("div");
     row.className = "lv-row";
-    row.addEventListener("click", () => speak(x.w));
+    row.addEventListener("click", () => openDetail(x.w));   // 点行看详情(发音进详情页)
     const main = document.createElement("div");
     main.className = "lv-main";
     const wordBtn = document.createElement("button");
@@ -229,6 +229,44 @@ $("homeSearch").addEventListener("input", (e) => {
 $("homeSearch").addEventListener("keydown", (e) => {
   if (e.key === "Escape") { e.target.value = ""; searchQ = ""; render(); }
 });
+
+/* ---------- 单词详情:搜索结果点击进入 ---------- */
+let detailWord = "";
+
+function openDetail(w) {
+  detailWord = w;
+  const item = vocabIndex.get(w) || { phon: "", def: "", tags: "", sents: [] };
+  $("dvWord").textContent = w;
+  $("dvWordBig").textContent = w;
+  $("dvPhon").textContent = [item.phon, item.tags].filter(Boolean).join(" · ");
+  $("dvDef").textContent = item.def || "";
+  const exs = $("dvExs");
+  exs.textContent = "";
+  for (const sent of (item.sents || []).slice(0, 2)) {
+    const ex = document.createElement("div");
+    ex.className = "ex";
+    const p = document.createElement("p");
+    fillSentence(p, sent.en || "", w);
+    const from = document.createElement("span");
+    from.className = "from";
+    from.textContent = `📖 ${sent.from || ""}`;
+    ex.append(p, from);
+    exs.append(ex);
+  }
+  const s = box.states[w];
+  const statusLine = s ? (s.g ? "🎓 已毕业" : `学习中 · 下次复习 ${new Date(s.due).toLocaleDateString("zh-CN")}`)
+    : "未开始";
+  $("dvStatus").textContent = statusLine;
+  $("detailView").hidden = false;
+}
+
+function closeDetail() {
+  detailWord = "";
+  $("detailView").hidden = true;
+}
+
+$("detailClose").addEventListener("click", closeDetail);
+$("dvSpeak").addEventListener("click", () => { if (detailWord) speak(detailWord); });
 
 function hideCardArea() {
   $("flash").hidden = true;
@@ -542,6 +580,10 @@ document.addEventListener("keydown", (e) => {
   }
   if (listOpen) {
     if (e.key === "Escape") closeList();
+    return;
+  }
+  if (detailWord) {              // 详情页开着:Esc 关闭,方向键不判定
+    if (e.key === "Escape") closeDetail();
     return;
   }
   if (!vocab || !queue.length) return;

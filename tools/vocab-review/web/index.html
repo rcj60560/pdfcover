@@ -43,6 +43,21 @@
     <div class="lv-list" id="searchList"></div>
   </div>
 
+  <!-- 单词详情:搜索/列表点击进入,完整释义+例句+状态 -->
+  <div class="screen detailview" id="detailView" hidden>
+    <div class="statsview-head">
+      <h2 id="dvWord">…</h2>
+      <button class="close" id="detailClose" aria-label="关闭">✕</button>
+    </div>
+    <div class="flash">
+      <div class="word-row"><span class="word" id="dvWordBig">…</span><button class="speak inline" id="dvSpeak" aria-label="发音">🔊</button></div>
+      <div class="phon meta" id="dvPhon"></div>
+      <div class="def" id="dvDef"></div>
+      <div id="dvExs"></div>
+    </div>
+    <p class="line" id="dvStatus"></p>
+  </div>
+
   <!-- 卡片:词 + 释义 + 例句一次全显 -->
   <div class="flash" id="flash">
     <div class="src" id="src">生词候选 · 来自词池</div>
