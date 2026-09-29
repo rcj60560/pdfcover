@@ -200,3 +200,7 @@ body { background: var(--inset); font-family: system-ui, "Microsoft YaHei", sans
   .searchview .lv-list { flex: 1; max-height: none; }
   .lv-list { max-height: none; }
 }
+
+/* 设置面板复选行 */
+.field.check { flex-direction: row; align-items: center; gap: 10px; }
+.field.check input { width: 20px; height: 20px; accent-color: var(--violet); }

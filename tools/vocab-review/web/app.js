@@ -12,7 +12,7 @@ const $ = (id) => document.getElementById(id);
 let vocab = null;            // vocab.json 全文
 let vocabIndex = new Map();  // w → 词条
 let box = null;              // 进度盒 {states, meta}
-let settings = { dailyLimit: 20 };
+let settings = { dailyLimit: 20, autoSpeak: true };
 let queue = [];              // 今日队列(队首 = 当前卡)
 let judged = 0;              // 本次会话已判定张数(进度条分子)
 let reviewed = 0;            // 本次会话判定的复习张数
@@ -39,6 +39,30 @@ function toast(msg) {
   toastTimer = setTimeout(() => el.classList.remove("show"), 2000);
 }
 
+/* ---------- 发音:挑最优英文嗓音 + 失败提示 ---------- */
+let enVoice = null;          // 缓存选中的嗓音;voiceschanged 时重挑
+let speakFailNotified = false;
+
+function pickVoice() {
+  if (enVoice) return enVoice;
+  const voices = (window.speechSynthesis.getVoices() || [])
+    .filter((v) => /^en[-_]/i.test(v.lang));
+  const score = (v) => {
+    let s = 0;
+    if (/^en[-_]US/i.test(v.lang)) s += 4;          // 美音优先(雅思也认英音,US 系嗓音质量普遍更稳)
+    else if (/^en[-_]GB/i.test(v.lang)) s += 2;
+    if (/google|natural|premium|enhanced|siri|neural/i.test(v.name)) s += 3;
+    if (/compact|espeak|pico/i.test(v.name)) s -= 2; // 明显机械感的降权
+    return s;
+  };
+  enVoice = voices.sort((a, b) => score(b) - score(a))[0] || null;
+  return enVoice;
+}
+
+if (canSpeak && window.speechSynthesis.addEventListener) {
+  window.speechSynthesis.addEventListener("voiceschanged", () => { enVoice = null; pickVoice(); });
+}
+
 function speak(text) {
   if (!canSpeak) return;
   try {
@@ -46,6 +70,13 @@ function speak(text) {
     const u = new SpeechSynthesisUtterance(text);
     u.lang = "en-US";
     u.rate = 0.9;
+    const v = pickVoice();
+    if (v) u.voice = v;
+    u.onerror = () => {
+      if (speakFailNotified) return;
+      speakFailNotified = true;
+      toast("发音不可用:请检查媒体音量/iOS低电量模式;微信内打开请用右上角菜单→在浏览器打开");
+    };
     window.speechSynthesis.speak(u);
   } catch { /* 发音失败不影响复习 */ }
 }
@@ -55,11 +86,15 @@ function loadSettings() {
   try {
     const raw = localStorage.getItem(SETTINGS_KEY);
     if (raw) {
-      const n = JSON.parse(raw).dailyLimit;
-      if (Number.isFinite(n) && n >= 1) return { dailyLimit: Math.round(n) };
+      const saved = JSON.parse(raw);
+      const n = saved.dailyLimit;
+      return {
+        dailyLimit: Number.isFinite(n) && n >= 1 ? Math.round(n) : 20,
+        autoSpeak: typeof saved.autoSpeak === "boolean" ? saved.autoSpeak : true,
+      };
     }
   } catch { /* 读不到就用默认 */ }
-  return { dailyLimit: 20 };
+  return { dailyLimit: 20, autoSpeak: true };
 }
 
 function saveSettings() {
@@ -166,6 +201,7 @@ let detailEnrich = null; // 详情页增强层容器
 function renderCard() {
   const readonly = viewIndex > 0;
   const w = readonly ? history[history.length - viewIndex] : queue[0];
+  if (!readonly && w && settings.autoSpeak) speak(w);   // 自动发音:切到新卡即读
   const item = vocabIndex.get(w) || { phon: "", def: "", tags: "", sents: [] };
   $("src").textContent = readonly ? "回看 · 只读,不计分"
     : (hasState(w) ? "复习 · 到期重现" : "生词候选 · 来自词池");
@@ -514,6 +550,7 @@ function rebuildQueue() {
 async function init() {
   settings = loadSettings();
   $("dailyLimit").value = String(settings.dailyLimit);
+  $("autoSpeak").checked = settings.autoSpeak;
   if (!canSpeak) document.body.classList.add("nospeak"); // 无语音合成则藏起 🔊
 
   let data;
@@ -668,3 +705,9 @@ document.addEventListener("keydown", (e) => {
 });
 
 init();
+
+/* 自动发音开关:即时生效 */
+$("autoSpeak").addEventListener("change", (e) => {
+  settings.autoSpeak = e.target.checked;
+  saveSettings();
+});
