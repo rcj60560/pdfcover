@@ -336,12 +336,11 @@ function closeOverlays() {
 }
 
 /* ---------- 队列 ---------- */
-let extra = 0;   // 「继续复习」在会话内追加的新词额度(刷新即回到每日上限)
 
 function rebuildQueue() {
   const now = Date.now();
   const words = vocab.words.map((x) => x.w);
-  const { queue: q, newToday } = buildQueue(words, box.states, now, settings.dailyLimit + extra, box.meta);
+  const { queue: q, newToday } = buildQueue(words, box.states, now, settings.dailyLimit, box.meta);
   queue = q;
   judged = 0; reviewed = 0; fresh = 0;
   classified.clear();
@@ -402,8 +401,16 @@ $("lvChips").addEventListener("click", (e) => {
   renderList();
 });
 $("doneMore").addEventListener("click", () => {
-  extra += settings.dailyLimit;   // 追加一批(数量=每日上限);当日发放数照常落库,明日不超发
-  rebuildQueue();
+  // 显式点击=用户意图,直接追加一批未发出的新词,不受「今日已发」扣减影响(那套上限只管自动发放);
+  // 发放数照常记账,明日自动发放不会超发
+  const now = Date.now();
+  const batch = vocab.words.map((x) => x.w).filter((w) => !hasState(w)).slice(0, settings.dailyLimit);
+  if (!batch.length) return;
+  queue.push(...batch);
+  const today = new Date(now).toDateString();
+  if (box.meta.lastNewDate === today) box.meta.lastNewCount += batch.length;
+  else { box.meta.lastNewDate = today; box.meta.lastNewCount = batch.length; }
+  saveState(box);
   render();
 });
 $("retry").addEventListener("click", () => location.reload());
