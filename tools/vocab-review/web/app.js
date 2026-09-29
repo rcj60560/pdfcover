@@ -255,7 +255,7 @@ function closeStats() {
 const LV_LABEL = { fresh: "未开始", learning: "学习中", done: "已毕业 ✓" };
 
 function renderList() {
-  const { counts, groups } = wordGroups(vocab.words.map((x) => x.w), box.states);
+  const { counts, groups } = wordGroups(vocab.words, box.states);
   const pct = counts.total ? Math.round((counts.done / counts.total) * 100) : 0;
   $("lvProgress").textContent = `总数 ${fmt(counts.total)} · 已毕业 ${fmt(counts.done)}(${pct}%)`;
   $("lvBarFill").style.width = `${pct}%`;
@@ -274,15 +274,24 @@ function renderList() {
     for (const it of items) {
       const row = document.createElement("div");
       row.className = "lv-row";
+      row.addEventListener("click", () => speak(it.w)); // 点行发音(词按钮聚焦回车同样冒泡触发)
+      const idx = document.createElement("span");
+      idx.className = "lv-idx";
+      idx.textContent = it.idx;                    // 全表序号:搜索/筛选后不变
+      const main = document.createElement("div");
+      main.className = "lv-main";
       const wordBtn = document.createElement("button");
       wordBtn.type = "button";
       wordBtn.className = "lv-word";
       wordBtn.textContent = it.w;
-      wordBtn.addEventListener("click", () => speak(it.w)); // 点词只发音,不导航
+      const def = document.createElement("div");
+      def.className = "lv-def";
+      def.textContent = it.def || "";              // 释义第二行,单行省略
+      main.append(wordBtn, def);
       const tag = document.createElement("span");
       tag.className = `lv-tag ${it.status}`;
       tag.textContent = LV_LABEL[it.status];
-      row.append(wordBtn, tag);
+      row.append(idx, main, tag);
       frag.append(row);
     }
   }

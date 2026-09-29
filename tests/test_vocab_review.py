@@ -194,6 +194,44 @@ def test_build_keeps_all_caps_known_words(tmp_path):
     assert all(w["w"] != "okbo" for w in result["words"])  # known 不进卡池(原有行为)
 
 
+def test_build_drops_person_names_never_lowercase(tmp_path):
+    """人名清洗:词条无标签 + 语料所有变体从未小写(全是 John 型)→ 丢弃;They 型(有小写)幸存。"""
+    import build
+    db = _make_db(tmp_path, [
+        ("john", "/dʒɒn/", "n. 约翰", "", 9000, ""),
+        ("johns", "/dʒɒnz/", "n. 约翰斯", "", 9000, "0:john"),   # 变体同归原形 john
+        ("they", "/ðeɪ/", "pron. 他们", "", 9000, ""),
+    ], name="names.db")
+    src = tmp_path / "docs6"; src.mkdir()
+    (src / "n.md").write_text(
+        "# 书N Unit 1\n\n---\n\n`0:00:01 → 0:00:05`\n\n"
+        "**John Johns meets They They they today.**\n", encoding="utf-8")
+    result = build.build(src, db, level="gk")
+    words = {w["w"] for w in result["words"]}
+    assert "john" not in words                      # 从未小写 + 无标签 → 人名清洗
+    assert "they" in words                          # 语料里出现过小写 they → 幸存
+    assert result["stats"] == {"total": 4, "known": 0, "candidate": 1, "dropped": 3}
+
+
+def test_build_keeps_never_lowercase_words_with_tags_or_freq(tmp_path):
+    """从未小写但词条有标签、或词频前 5000 判 known 的词 → 不按人名清洗。"""
+    import build
+    db = _make_db(tmp_path, [
+        ("rjnel", "/r/", "n. 有标签候选", "cet6", 8000, ""),
+        ("usaqq", "/j/", "n. 有标签已会", "zk gk", 300, ""),
+        ("mfrqq", "/m/", "n. 高频无标签", "", 300, ""),
+    ], name="tagged.db")
+    src = tmp_path / "docs7"; src.mkdir()
+    (src / "t.md").write_text(
+        "# 书T Unit 1\n\n---\n\n`0:00:01 → 0:00:05`\n\n"
+        "**Rjnel and Usaqq plus Mfrqq go.**\n", encoding="utf-8")
+    result = build.build(src, db, level="gk")
+    words = {w["w"] for w in result["words"]}
+    assert "rjnel" in words                         # 从未小写但有 cet6 标签 → 照常出卡
+    assert "usaqq" not in words and "mfrqq" not in words   # known:不进卡池也不算 dropped
+    assert result["stats"] == {"total": 6, "known": 2, "candidate": 1, "dropped": 3}
+
+
 def test_build_no_duplicate_display_words(tmp_path):
     """两个原形(gather/gathering)落到同一展示词(gathering)时只出一张卡。"""
     import build

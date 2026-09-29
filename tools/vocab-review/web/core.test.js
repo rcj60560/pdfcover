@@ -101,29 +101,44 @@ test("summarize:空进度与无 stats 时兜底", () => {
   assert.equal(s.accuracy, 0);                      // 无判定不除零
 });
 
-test("wordGroups:字母分节/组内排序/空字母跳过/# 兜底", () => {
+test("wordGroups:字母分节/组内排序/空字母跳过/# 兜底/全表序号与释义", () => {
   const states = {
     apple: { ...newState(), g: true },              // 已毕业
     apron: { ...newState(), r: 1 },                 // 学习中
     banana: { ...newState() },                      // 学习中(答过但未毕业)
   };
-  const r = wordGroups(["banana", "apple", "apricot", "apron", "Cherry", "2nd", "空调"], states);
+  const r = wordGroups([
+    { w: "banana", def: "n. 香蕉" },
+    { w: "apple", def: "n. 苹果" },
+    { w: "apricot", def: "n. 杏" },
+    { w: "apron", def: "n. 围裙" },
+    { w: "Cherry", def: "n. 樱桃" },
+    { w: "2nd", def: "num. 第二" },
+    { w: "空调", def: "n. 空调" },
+  ], states);
   assert.deepEqual(r.groups.map((g) => g.letter), ["A", "B", "C", "#"]);   // 无词的字母不出现,# 殿后
   assert.deepEqual(r.groups[0].items, [
-    { w: "apple", status: "done" },                 // g=true → done
-    { w: "apricot", status: "fresh" },              // 无状态 → fresh
-    { w: "apron", status: "learning" },             // 有状态未毕业 → learning
+    { w: "apple", status: "done", def: "n. 苹果", idx: 1 },   // idx = 全表字母序(过滤前)1 基序号
+    { w: "apricot", status: "fresh", def: "n. 杏", idx: 2 },
+    { w: "apron", status: "learning", def: "n. 围裙", idx: 3 },
   ]);
-  assert.deepEqual(r.groups[3].items, [{ w: "2nd", status: "fresh" }, { w: "空调", status: "fresh" }]);
+  assert.deepEqual(r.groups[1].items, [{ w: "banana", status: "learning", def: "n. 香蕉", idx: 4 }]);
+  assert.deepEqual(r.groups[2].items, [{ w: "Cherry", status: "fresh", def: "n. 樱桃", idx: 5 }]); // 大小写不影响序号
+  assert.deepEqual(r.groups[3].items, [
+    { w: "2nd", status: "fresh", def: "num. 第二", idx: 6 },  // 非字母词排全表末尾,与 # 节一致
+    { w: "空调", status: "fresh", def: "n. 空调", idx: 7 },
+  ]);
 });
 
-test("wordGroups:四态计数与空词表", () => {
+test("wordGroups:四态计数/缺释义兜底/空词表", () => {
   const states = {
-    a: { ...newState(), g: true },
-    b: { ...newState() },
+    ax: { ...newState(), g: true },
+    ay: { ...newState() },
   };
-  const r = wordGroups(["a", "b", "c", "d"], states);
+  const r = wordGroups([{ w: "ax" }, { w: "ay", def: "x" }, { w: "az" }, { w: "b" }], states);
   assert.deepEqual(r.counts, { total: 4, done: 1, learning: 1, fresh: 2 });
+  assert.deepEqual(r.groups[0].items[1], { w: "ay", status: "learning", def: "x", idx: 2 });
+  assert.equal(r.groups[0].items[0].def, "");       // 词条缺 def → 空串兜底
   const empty = wordGroups([], {});
   assert.deepEqual(empty.counts, { total: 0, done: 0, learning: 0, fresh: 0 });
   assert.deepEqual(empty.groups, []);

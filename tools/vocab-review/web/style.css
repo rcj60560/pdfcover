@@ -115,10 +115,13 @@ body {
 .chipbtn.on { border-color: var(--violet); color: var(--violet); background: #eee9f8; font-weight: 600; }
 .lv-list { overflow-y: auto; max-height: 54vh; min-height: 120px; border: 1px solid #e5dff2; border-radius: 12px; background: var(--card); }
 .lv-letter { position: sticky; top: 0; z-index: 1; background: #eee9f8; color: var(--violet); font-size: 12px; font-weight: 700; padding: 6px 12px; }
-.lv-row { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 0 12px; min-height: 44px; border-bottom: 1px solid #f0ecf8; }
+.lv-row { display: flex; align-items: center; gap: 8px; padding: 0 12px; min-height: 52px; border-bottom: 1px solid #f0ecf8; cursor: pointer; }
 .lv-row:last-child { border-bottom: none; }
-.lv-word { flex: 1; min-width: 0; border: none; background: none; font-size: 15px; color: var(--ink); text-align: left; padding: 10px 0; cursor: pointer; overflow-wrap: anywhere; }
-.nospeak .lv-word { cursor: default; }           /* 无语音合成时点词无动作 */
+.nospeak .lv-row { cursor: default; }            /* 无语音合成时点行无动作 */
+.lv-idx { flex: none; width: 2.4em; font-size: 11px; color: var(--muted); font-variant-numeric: tabular-nums; text-align: right; }
+.lv-main { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; padding: 8px 0; }
+.lv-word { border: none; background: none; font-size: 15px; color: var(--ink); text-align: left; padding: 0; cursor: pointer; overflow-wrap: anywhere; }
+.lv-def { font-size: 11.5px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .lv-tag { flex: none; font-size: 11px; padding: 4px 9px; border-radius: 999px; white-space: nowrap; }
 .lv-tag.fresh { background: #eceaf2; color: var(--muted); }
 .lv-tag.learning { background: #e6e0f8; color: var(--violet); }

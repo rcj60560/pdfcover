@@ -93,6 +93,7 @@ def build(src_root: Path, ecdict_path: Path, level: str = "gk") -> dict:
     docs = sorted(p for p in src_root.rglob("*.md") if "`" in p.read_text(encoding="utf-8")[:400])
     sentences: list[tuple[str, str]] = []      # (句子, 来源)
     token_case: dict[str, list[bool]] = {}     # token -> 每次出现是否全大写(缩写判定)
+    token_lower: set[str] = set()              # 语料里出现过全小写形态的 token(人名判定)
     counts: dict[str, int] = {}
     for path in docs:
         text = path.read_text(encoding="utf-8")
@@ -104,6 +105,8 @@ def build(src_root: Path, ecdict_path: Path, level: str = "gk") -> dict:
                 low = raw.lower()
                 counts[low] = counts.get(low, 0) + 1
                 token_case.setdefault(low, []).append(raw.isupper())
+                if raw.islower():
+                    token_lower.add(low)
 
     entries, lemmas = ecdict_mod.load_for_tokens(ecdict_path, set(counts))
 
@@ -128,6 +131,14 @@ def build(src_root: Path, ecdict_path: Path, level: str = "gk") -> dict:
         if (kind != "known" and len(lemma) <= 5 and entry is not None
                 and not (entry["tag"] or "").strip()
                 and all(all(token_case[t]) for t in lemma_variants[lemma])):
+            stats["dropped"] += 1
+            continue
+        # 人名清洗(John/Rafael 型):词条无任何考纲标签 + 语料里该词所有变体
+        # 从未以全小写出现(每次都是 John/JOHN 型大写)且非已知词 → 专有名词,清洗
+        # (They/The 语料里有小写形态、OK/USA 有标签,均不受影响)
+        if (kind != "known" and entry is not None
+                and not (entry["tag"] or "").strip()
+                and all(t not in token_lower for t in lemma_variants[lemma])):
             stats["dropped"] += 1
             continue
         if kind == "drop" or (entry is None and lemma_counts[lemma] < 2):
