@@ -78,5 +78,12 @@ vocab.json(词池快照:候选词+释义+例句+统计,~900KB)
 ## 七、迁移要点(如果做 App/小程序)
 - **可直接搬走**:`core.js`(纯逻辑,零 DOM 依赖,带测试)——SM-2/队列/存储/统计全在里面;`build.py/ecdict.py/enrich.py`(构建期,换端不动;产物 vocab.json 通用)
 - **需要重写**:app.js(DOM)→ 目标端 UI(WXML/Compose/React Native…);style.css
-- **语音**:Web 用 speechSynthesis;小程序用"微信同声传译"插件;App 用系统 TTS
+- **语音**:Web 用有道 dictvoice 真人录音(Audio 标签,CORS 不适用)+ speechSynthesis 兜底;小程序可用同款有道 URL 或"微信同声传译"插件
 - **存储升级路径**:localStorage → 云数据库(微信云开发/任一 BaaS)可获得跨设备同步;字段结构现成
+
+## 附:发音演进(2026-09-29 定稿)
+系统 TTS 在 Windows Chrome 上机械感重、可能选中中文嗓音(用户实测"很怪")→ 定稿方案:
+**有道词典真人发音为主**(`https://dict.youdao.com/dictvoice?audio={word}&type=1|2`,公开免费端点,词典级录音,
+英音 type=1/美音 type=2,设置面板可切换+试听),`Audio.play()` 失败(断网/拦截)才回退系统 TTS
+(pickVoice 按 en-US 优先+高质量嗓音名加权)。自动发音默认开,切新卡即读。
+教训:单词发音别用系统 TTS,词典录音接口一步到位。

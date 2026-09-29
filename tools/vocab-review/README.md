@@ -1,54 +1,47 @@
-# 单词复习（vocab-review）
+# 单词复习(vocab-review)
 
-字幕库里的划线英文词自动做成生词卡，手机网页间隔复习。`build.py` 从字幕 md 的
-`**加粗英文行**` 收词，经 ECDICT 标签/词频分级——高考（gk）以下视为已会直接丢弃，
-cet4/ky/toefl 等标签的生词候选连同原句例句生成 `web/vocab.json`；页面纯静态，
-复习进度存在浏览器 localStorage，不依赖任何后端。
+字幕文章库 → 个人词池 → SM-2 间隔复习。手机优先的公网静态站,零后端依赖。
+实现细节/组件/规则全记录见 [ARCHITECTURE.md](ARCHITECTURE.md)。
 
-## 使用（构建 → 上传）
+## 线上
 
-首次准备 ECDICT：从 [skywind3000/ecdict](https://github.com/skywind3000/ecdict) releases
-下载 `ecdict-sqlite-28.zip`，解压出 `stardict.db` 放到仓库根 `tmp/ecdict/stardict.db`
-（或用 `--ecdict` 另指路径）。
+- 主站:http://47.108.230.162/script/vocab/ (字幕站顶栏「🔤 单词复习」也有入口)
+- Beta:http://47.108.230.162/script/vocab-beta/ (雅思词书增强版,英英/短语/有道例句)
+- 两站进度独立(localStorage);浏览器建议 Chrome(手机/电脑均可)
+
+## 使用(手机)
+
+- 卡片直显:词+音标+🔊+释义+例句,点 😒不认识 / 😃认识 判定;连认 4 次或间隔≥21 天毕业
+- 自动发音默认开(有道词典真人录音,⚙ 可切英音/美音,断网回退系统语音)
+- 完成今日队列后可「➕ 继续复习」加一批;◀▶ 回看已判过的卡
+- 顶部搜索框即搜全词池,点结果进详情页
+- ⚙ 设置:每日新词上限 / 自动发音 / 发音偏好 / 导出·导入进度(**导入是覆盖**) / 📖 词库总览(字母分节+状态筛选+毕业进度) / 📊 统计报表(正确率+近7日趋势) / 🗑 重置
+- 注意:进度按设备隔离;跨设备迁移用 导出→导入
+
+## 构建(电脑,新增文章后跑一遍)
 
 ```bash
 cd tools/vocab-review
-python build.py     # 字幕 md → web/vocab.json（源目录读 subtitle-viewer config.json 的 src_root）
-python upload.py    # scp web/ 五件套 → 服务器 /script/vocab/
+python build.py                                  # 扫描字幕库 → web/vocab.json(需 tmp/ecdict/stardict.db)
+python enrich.py                                 # 雅思词书增强 → web/vocab-beta.json(可选,需 tmp/kajweb/*.json)
+python upload.py                                  # 主站部署
+python upload.py --dir vocab-beta --vocab web/vocab-beta.json   # beta 部署
 ```
 
-`upload.py --build` 可一步到位：先重新构建再上传。**新增文章后**照此重跑一遍——
-字幕库同步（subtitle-viewer `sync_subtitles.py`）→ `python upload.py --build`，
-词池与例句即包含新内容。
-
-线上地址：http://47.108.230.162/script/vocab/ （字幕站顶栏「🔤 单词复习」直达）。
-
-## 进度与备份
-
-- 复习进度（每词的间隔天数、到期日、连续认识次数）只存本机浏览器的
-  localStorage（key `vocab-review-state-v1`），不上服务器。
-- 换设备 / 清缓存前：⚙ 设置 →「导出进度」存一份 json；新设备「导入进度」恢复。
-  导入文件会先校验格式，不对则拒绝且不影响当前进度。
-- 隐私模式存不进 localStorage 时，页面顶部有横幅提醒（进度只在本页有效）。
+- 字幕库目录默认取 subtitle-viewer config.json 的 src_root;`--src/--ecdict/--out/--level` 可覆盖
+- ECDICT sqlite 首次准备:GitHub ECDICT releases 下载 ecdict-sqlite-28.zip,解压出 stardict.db 放 tmp/ecdict/
+- 雅思词书:kajweb/dict 仓库 book/ 下 IELTSluan_2.zip + IELTS_3.zip(github.com 被墙时走 api.github.com blobs API)
+- 手机进度不随词池更新丢失(按词形原形为键)
 
 ## 本地预览
 
 ```bash
-cd tools/vocab-review/web
-python -m http.server 8890    # 打开 http://127.0.0.1:8890
+cd tools/vocab-review/web && python -m http.server 8890   # http://127.0.0.1:8890(file:// 打不开,有 CORS)
 ```
 
-直接双击 index.html（file://）不行——fetch vocab.json 会被浏览器拦。
+## 测试
 
-## 结构
-
-| 文件 | 职责 |
-|---|---|
-| `build.py` | 字幕 md → 划线词分级筛选 → `web/vocab.json` |
-| `ecdict.py` | ECDICT sqlite 只读查询、词形还原（stardict.db） |
-| `upload.py` | scp `web/` 五件套到服务器 `/script/vocab/`，结尾 chown |
-| `web/index.html` · `app.js` · `style.css` | 复习页：卡片流（翻面自测 + 认识/不认识）与设置抽屉 |
-| `web/core.js` | 队列、SM-2 简化调度、进度导入导出（纯逻辑） |
-
-离线单测在根目录 `tests/test_vocab_review.py`（pytest）；前端纯逻辑测试
-`web/core.test.js`（`cd web && node --test`）。测试不访问网络、不上传。
+```bash
+python -m pytest tests/test_vocab_review.py -q   # 构建/增强纯逻辑
+cd web && node --test                            # SM-2/队列/存储/分组纯逻辑
+```
