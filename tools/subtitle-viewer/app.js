@@ -1,8 +1,8 @@
 // subtitle-viewer/app.js —— 副作用层：fetch / DOM / 计时 / 滚动。逻辑全在 core.js。
 import {
   esc, parseSubtitleMd, currentBlockIndex, isEnded, SyncClock, formatMs,
-  renderBlock, groupBooks, groupUnits, plainText, renderPlain, targetScrollTop,
-} from "./core.js?v=10";
+  renderBlock, groupBooks, groupUnits, plainText, renderPlain, targetScrollTop, blockKeyframes,
+} from "./core.js?v=11";
 
 const $ = (sel) => document.querySelector(sel);
 
@@ -166,16 +166,16 @@ function setActive(idx) {
 
 /* ---------- 连续跟随滚动：时间插值 + 指数平滑，换句不跳 ---------- */
 
-function measureKeyframes() {          // 每块的居中 scrollTop（resize 后重算）
+function measureKeyframes() {          // 每块的滚动关键帧（resize 后重算）
   const vh = window.innerHeight;
+  const pad = ($("#topbar")?.offsetHeight || 0) + 12;   // 长块起帧避让吸顶栏
   state.keyframes = state.blocks
-    .map((b, i) => {
+    .flatMap((b, i) => {
       const el = document.querySelector(`.blk[data-i="${i}"]`);
-      if (!el) return null;
+      if (!el) return [];
       const r = el.getBoundingClientRect();
-      return { t: b.startMs, y: r.top + window.scrollY + r.height / 2 - vh / 2 };
-    })
-    .filter(Boolean);
+      return blockKeyframes(b, { top: r.top + window.scrollY, height: r.height }, vh, pad);
+    });
 }
 
 function followFrame() {

@@ -2,7 +2,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import {
   parseTs, parseSubtitleMd, currentBlockIndex, isEnded, SyncClock, formatMs,
-  targetScrollTop,
+  targetScrollTop, blockKeyframes,
 } from "./core.js";
 import { renderBlock, groupManifest, groupBooks, groupUnits, plainText, renderPlain } from "./core.js";
 
@@ -77,6 +77,26 @@ test("targetScrollTop 插值/边界/空", () => {
   assert.equal(targetScrollTop(99999, kf), 900);    // 末块后保持
   assert.equal(targetScrollTop(500, []), null);     // 无关键帧
   assert.equal(targetScrollTop(6000, [{ t: 6000, y: 1 }, { t: 6000, y: 2 }]), 2); // 同刻
+});
+
+test("blockKeyframes 短块(≤3/4视口)整块居中一帧,行为与旧版一致", () => {
+  const b = { startMs: 8000, endMs: 14000 };
+  const kfs = blockKeyframes(b, { top: 1000, height: 200 }, 700, 40);
+  assert.deepEqual(kfs, [{ t: 8000, y: 1000 + 100 - 350 }]);
+  // 高度恰在阈值上(525 = 0.75×700)仍按短块
+  assert.equal(blockKeyframes(b, { top: 0, height: 525 }, 700, 40).length, 1);
+});
+
+test("blockKeyframes 长块起止两帧,随语音时长线性扫过整块", () => {
+  const b = { startMs: 3000, endMs: 117000 };       // 剑桥词汇:整段录音一块,约2分钟
+  const kfs = blockKeyframes(b, { top: 2000, height: 2000 }, 700, 40);
+  assert.deepEqual(kfs, [
+    { t: 3000, y: 2000 - 40 },                      // 开始:块顶露在顶栏下方
+    { t: 117000, y: 2000 + 2000 - 700 + 40 },       // 结束:块底贴屏幕底
+  ]);
+  // 中途时刻插值落在两帧之间(与 targetScrollTop 联动)
+  const mid = targetScrollTop(60000, kfs);
+  assert.ok(kfs[0].y < mid && mid < kfs[1].y);
 });
 
 test("SyncClock 计时/暂停/±5s/锚定", () => {

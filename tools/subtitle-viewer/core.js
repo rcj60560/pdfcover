@@ -66,6 +66,18 @@ export function targetScrollTop(ms, keyframes) {   // 连续滚动：按时间�
   return a.y + (b.y - a.y) * ((ms - a.t) / (b.t - a.t));
 }
 
+/** 单块 → 滚动关键帧。短块(高≤3/4视口)整块居中一帧（旧版行为）；
+ *  长块(如剑桥词汇整段录音一块)起止两帧：开始时块顶对齐视口上部(pad=顶栏高+边距)，
+ *  结束时块底贴视口底——配合 targetScrollTop 按语音时长线性扫过整块。
+ *  b=块(用 startMs/endMs)，geo={top,height} 块的文档绝对坐标，vh=视口高，pad=安全边距。 */
+export function blockKeyframes(b, geo, vh, pad) {
+  if (geo.height <= vh * 0.75) return [{ t: b.startMs, y: geo.top + geo.height / 2 - vh / 2 }];
+  return [
+    { t: b.startMs, y: geo.top - pad },
+    { t: b.endMs, y: geo.top + geo.height - vh + pad },
+  ];
+}
+
 export class SyncClock {
   constructor(now = () => performance.now()) {
     this._now = now;
