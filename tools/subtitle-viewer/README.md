@@ -20,6 +20,22 @@ python sync_subtitles.py [--src 目录] [--dry-run]
 块间 `---` 分隔；每块：`00:00:08 → 00:00:14`（反引号）+ `**英文**` + 中文段落。
 无时间戳的 md 降级为静态阅读模式。
 
+## 新概念2 管线（nce2/）
+书库 `/script/books/新概念2/` 的 96 个 mp3 自带 LRC 同步字幕（句级时间戳 + 中英对照，露珠版），
+无需转写/翻译，直接转字幕 md：
+
+```bash
+cd tools/subtitle-viewer
+python nce2/build.py                     # 全量 96 课 → src_root/新概念2/（平铺散文件，书卡第 4 入口）
+python nce2/build.py --limit 3 --out DIR # 样张
+python nce2/build.py --en-only 10 --out DIR   # 第 1-N 课英文合辑（欧路精翻备用通道，整段不硬换行）
+```
+
+- LRC 缓存：仓库 `tmp/nce2_lrc/`（96 个，与 mp3 同名；重取：`scp root@47.108.230.162:"/www/wwwroot/47.108.230.162/script/books/新概念2/*.lrc" tmp/nce2_lrc/`）。
+- 中文默认 `LRC 内置`；要逐课精翻替换时改 `--zh-source 精翻` 重生成。
+- 块 = LRC 行 = 句；末块 end = start+5s；时间轴规则同 cambridge。
+- 音频在音频站播放，字幕页手动对时跟读（同剑桥书模式）。
+
 ## 剑桥雅思词汇管线（cambridge/）
 《剑桥雅思核心词汇精讲精练》书后 Recording scripts → 时间轴双语字幕：
 OCR 提取 → faster-whisper 词级转写 → difflib 词序对齐 → 人工/LLM 翻译 → 生成 md。
