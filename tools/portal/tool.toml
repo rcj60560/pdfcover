@@ -1,0 +1,7 @@
+name = "公网门户"
+desc = "47 站点统一入口卡片页——直达书库/字幕/单词/口语各功能"
+category = "英语"
+status = "ready"
+
+[links]
+live = "http://47.108.230.162/"

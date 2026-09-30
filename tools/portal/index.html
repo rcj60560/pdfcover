@@ -1,0 +1,78 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>学习工具箱</title>
+<style>
+  :root { --violet:#5865f2; --bg:#f2f3f5; --card:#fff; --line:#e3e5e8; --ink:#2e3338; --muted:#5c5e66; }
+  * { box-sizing:border-box; margin:0; padding:0; }
+  body {
+    font-family:-apple-system,"Segoe UI",Roboto,"PingFang SC","Microsoft YaHei",sans-serif;
+    background:var(--bg); color:var(--ink);
+    min-height:100dvh; display:flex; flex-direction:column; align-items:center;
+    padding:22px 14px calc(20px + env(safe-area-inset-bottom));
+  }
+  main { width:100%; max-width:720px; }
+  header { text-align:center; margin-bottom:16px; }
+  header h1 { font-size:22px; }
+  header p { color:var(--muted); font-size:13px; margin-top:4px; }
+  .grid { display:grid; grid-template-columns:repeat(2,1fr); gap:10px; }
+  @media (min-width:700px) { .grid { grid-template-columns:repeat(3,1fr); } }
+  a.card {
+    display:flex; flex-direction:column; gap:6px;
+    background:var(--card); border:1px solid var(--line); border-radius:10px;
+    padding:16px 14px; min-height:106px; text-decoration:none; color:inherit;
+    transition:transform .06s ease;
+  }
+  a.card:active { transform:scale(.98); }
+  a.card .ico { font-size:26px; line-height:1; }
+  a.card b { font-size:15px; }
+  a.card span.d { font-size:12px; color:var(--muted); line-height:1.45; }
+  a.card .go { margin-top:auto; color:var(--violet); font-size:12px; font-weight:600; }
+  a.card.beta { border-style:dashed; background:transparent; }
+  footer { margin-top:18px; color:var(--muted); font-size:12px; text-align:center; }
+</style>
+</head>
+<body>
+<main>
+  <header>
+    <h1>📚 学习工具箱</h1>
+    <p>全部功能,一页直达</p>
+  </header>
+  <div class="grid">
+    <a class="card" href="/script/">
+      <span class="ico">🎧</span><b>我的书库</b>
+      <span class="d">听力音频 · 剑桥真题 / Collins / 词汇书</span>
+      <span class="go">进入 ›</span>
+    </a>
+    <a class="card" href="/script/subtitles/">
+      <span class="ico">📖</span><b>字幕跟读</b>
+      <span class="d">双语字幕文章 · 音画同步</span>
+      <span class="go">进入 ›</span>
+    </a>
+    <a class="card" href="/script/vocab/">
+      <span class="ico">🔤</span><b>单词复习</b>
+      <span class="d">SM-2 记忆卡 · 真人发音 · 云同步</span>
+      <span class="go">进入 ›</span>
+    </a>
+    <a class="card" href="/script/speaking/">
+      <span class="ico">🎤</span><b>口语跟读</b>
+      <span class="d">卡拉OK 逐词高亮 · 单句循环</span>
+      <span class="go">进入 ›</span>
+    </a>
+    <a class="card" href="/script/topics/">
+      <span class="ico">💬</span><b>口语话题</b>
+      <span class="d">走遍美国 · IELTS 口语话题</span>
+      <span class="go">进入 ›</span>
+    </a>
+    <a class="card beta" href="/script/vocab-beta/">
+      <span class="ico">🧪</span><b>单词复习 β</b>
+      <span class="d">雅思词书增强版 · 进度独立</span>
+      <span class="go">试试 ›</span>
+    </a>
+  </div>
+  <footer>手机可「添加到主屏幕」当 App 用</footer>
+</main>
+</body>
+</html>

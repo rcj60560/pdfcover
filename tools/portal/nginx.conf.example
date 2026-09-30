@@ -1,0 +1,16 @@
+# 门户页根路径配置 —— 服务器实际操作(宝塔):
+# 存为 /www/server/panel/vhost/nginx/extension/47.108.230.162/portal.conf
+# 然后:nginx -t && nginx -s reload
+#
+# 背景:vhost 里有 location ^~ / { proxy_pass http://127.0.0.1:8080; } 的全站反代,
+# 根路径会被打到 8080 的 Java 进程(500)。这里用两个精确匹配把 / 和 /index.html
+# 认领为静态门户页,其余路径行为不变。
+
+location = / {
+    root /www/wwwroot/47.108.230.162;
+    index index.html;
+}
+
+location = /index.html {
+    root /www/wwwroot/47.108.230.162;
+}
