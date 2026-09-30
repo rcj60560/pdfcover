@@ -1,12 +1,13 @@
-"""新概念2:LRC 同步字幕 → 字幕跟读 md。
+"""新概念(2/3):LRC 同步字幕 → 字幕跟读 md。
 
 源数据:书库音频自带的 .lrc(句级时间戳 + 中英对照,露珠同步字幕版),
-缓存于仓库 tmp/nce2_lrc/(96 个,与 /script/books/新概念2/*.mp3 同名)。
+缓存于仓库 tmp/nce2_lrc/(96 个)、tmp/nce3_lrc/(60 个),与 /script/books/新概念N/*.mp3 同名。
 
 用法:
-  python build.py --out DIR --limit 3      # 样张:前 3 课
-  python build.py                          # 全量 96 课 → src_root/新概念2/
-  python build.py --en-only 10 --out DIR   # 第 1-10 课英文合辑(欧路精翻用,英文不硬换行)
+  python build.py                          # 全量 --book 册 → src_root/新概念N/
+  python build.py --book 3 --out DIR       # 指定册/指定目录
+  python build.py --limit 3 --out DIR      # 样张:前 3 课
+  python build.py --en-only 10 --out DIR   # 第 1-N 课英文合辑(欧路精翻用,英文不硬换行)
 
 时间轴规则与 cambridge/build_md.py 一致:块 end = 下一块 start,末块 +5s,最短 0.5s。
 """
@@ -18,8 +19,12 @@ import re
 from pathlib import Path
 
 TOOL_DIR = Path(__file__).resolve().parent
-REPO_TMP = TOOL_DIR.parents[2] / "tmp" / "nce2_lrc"
-DEFAULT_BOOK = "新概念2"
+REPO_TMP = TOOL_DIR.parents[2] / "tmp"
+# --book 预设:书名(库目录名=书库音频名) / 文档标题前缀 / LRC 缓存子目录
+BOOKS = {
+    2: ("新概念2", "新概念英语2", "nce2_lrc"),
+    3: ("新概念3", "新概念英语3", "nce3_lrc"),
+}
 
 STYLE = (
     "<style>\n"
@@ -73,11 +78,13 @@ def lesson_meta(stem: str, meta: dict[str, str]) -> tuple[str, str]:
     return num, (meta.get("ti") or title or stem).strip()
 
 
-def build_lesson_md(stem: str, rows: list[tuple[int, str, str]], zh_source: str) -> str:
+def build_lesson_md(stem: str, rows: list[tuple[int, str, str]], zh_source: str,
+                    book: tuple[str, str]) -> str:
+    name, prefix = book
     num, title = lesson_meta(stem, {})
     parts = [
-        f"# 新概念英语2 · Lesson {num} {title}\n\n"
-        f"> 来源: 新概念英语2 美音版同步字幕(露珠) · 音频 书库「{DEFAULT_BOOK}」{stem}.mp3\n"
+        f"# {prefix} · Lesson {num} {title}\n\n"
+        f"> 来源: {prefix} 美音版同步字幕(露珠) · 音频 书库「{name}」{stem}.mp3\n"
         f"> 时间轴: `LRC 句级同步` · 中文 `{zh_source}` · 共 {len(rows)} 条\n\n"
         f"{STYLE}",
     ]
@@ -90,9 +97,10 @@ def build_lesson_md(stem: str, rows: list[tuple[int, str, str]], zh_source: str)
     return "\n\n".join(parts) + "\n"
 
 
-def build_en_only(stems: list[str], rows_by: dict[str, list]) -> str:
+def build_en_only(stems: list[str], rows_by: dict[str, list], book: tuple[str, str]) -> str:
     """第 1-N 课英文合辑:每课一段,整段不硬换行(欧路整段翻译用)。"""
-    parts = ["# 新概念英语2 · 第 1-{} 课英文(待精翻)".format(len(stems))]
+    name, prefix = book
+    parts = [f"# {prefix} · 第 1-{len(stems)} 课英文(待精翻)"]
     for stem in stems:
         num, title = lesson_meta(stem, {})
         parts.append(f"---\n\n## Lesson {num} {title}\n\n" + " ".join(en for _, en, _ in rows_by[stem]))
@@ -100,33 +108,37 @@ def build_en_only(stems: list[str], rows_by: dict[str, list]) -> str:
 
 
 def main(argv: list[str] | None = None) -> None:
-    ap = argparse.ArgumentParser(description="新概念2 LRC → 字幕跟读 md")
-    ap.add_argument("--lrc", type=Path, default=REPO_TMP, help="LRC 目录(默认 tmp/nce2_lrc)")
-    ap.add_argument("--out", type=Path, default=None, help="输出目录(默认 src_root/新概念2/)")
+    ap = argparse.ArgumentParser(description="新概念 LRC → 字幕跟读 md")
+    ap.add_argument("--book", type=int, default=2, choices=sorted(BOOKS), help="册号(默认 2)")
+    ap.add_argument("--lrc", type=Path, default=None, help="LRC 目录(默认 tmp/nce{N}_lrc)")
+    ap.add_argument("--out", type=Path, default=None, help="输出目录(默认 src_root/新概念N/)")
     ap.add_argument("--limit", type=int, default=None, help="只处理前 N 课(样张)")
     ap.add_argument("--en-only", type=int, default=None, help="输出第 1-N 课英文合辑 md 而非双语")
     ap.add_argument("--zh-source", default="LRC 内置", help="中文来源标注")
     args = ap.parse_args(argv)
 
-    stems = sorted(p.stem for p in args.lrc.glob("*.lrc"))
+    name, prefix, lrc_dir = BOOKS[args.book]
+    book = (name, prefix)
+    lrc_dir = args.lrc or (REPO_TMP / lrc_dir)
+    stems = sorted(p.stem for p in lrc_dir.glob("*.lrc"))
     if not stems:
-        raise SystemExit(f"没有 LRC 文件:{args.lrc}")
+        raise SystemExit(f"没有 LRC 文件:{lrc_dir}")
     if args.limit:
         stems = stems[: args.limit]
-    rows_by = {s: parse_lrc(args.lrc / f"{s}.lrc")[1] for s in stems}
+    rows_by = {s: parse_lrc(lrc_dir / f"{s}.lrc")[1] for s in stems}
 
     if args.en_only is not None:
         picked = stems[: args.en_only]
-        out = (args.out or Path.cwd()) / f"新概念2 第1-{len(picked)}课-英文.md"
-        out.write_text(build_en_only(picked, rows_by), encoding="utf-8")
+        out = (args.out or Path.cwd()) / f"{name} 第1-{len(picked)}课-英文.md"
+        out.write_text(build_en_only(picked, rows_by, book), encoding="utf-8")
         print(f"英文合辑 → {out}({len(picked)} 课)")
         return
 
     config = json.loads((TOOL_DIR.parent / "config.json").read_text(encoding="utf-8"))
-    out_dir = args.out or (Path(config["src_root"]) / DEFAULT_BOOK)
+    out_dir = args.out or (Path(config["src_root"]) / name)
     out_dir.mkdir(parents=True, exist_ok=True)
     for s in stems:
-        (out_dir / f"{s}.md").write_text(build_lesson_md(s, rows_by[s], args.zh_source), encoding="utf-8")
+        (out_dir / f"{s}.md").write_text(build_lesson_md(s, rows_by[s], args.zh_source, book), encoding="utf-8")
     print(f"{len(stems)} 课 → {out_dir}")
 
 
