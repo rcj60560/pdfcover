@@ -86,13 +86,13 @@ def find_zh_file(zh_dir: Path, ep_id: str) -> Path | None:
     return None
 
 
-def align_episode(blocks: list[dict], chinese: str, tmp_dir: Path) -> list[str]:
+def align_episode(blocks: list[dict], chinese: str, tmp_dir: Path, ep_id: str) -> list[str]:
     prompt = PROMPT_TEMPLATE.format(
         count=len(blocks),
         blocks="\n".join(f"[{i + 1:03d}] {b['text']}" for i, b in enumerate(blocks)),
         chinese=chinese,
     )
-    out = run_claude_to_file(prompt, tmp_dir / "_align_out.tmp")
+    out = run_claude_to_file(prompt, tmp_dir / f"_align_out.{ep_id}.tmp")
     zh = split_align_blocks(out)
     if len(zh) != len(blocks):
         raise RuntimeError(f"对齐块数不符: {len(zh)}/{len(blocks)}")
@@ -128,7 +128,7 @@ def main(argv: list[str] | None = None) -> None:
         blocks = merge_cues(parse_vtt(vtt.read_text(encoding="utf-8", errors="replace")))
         chinese = load_chinese(zh_file)
         try:
-            zh = align_episode(blocks, chinese, zh_dir)
+            zh = align_episode(blocks, chinese, zh_dir, ep_id)
         except Exception as exc:
             print(f"{ep_id}: ✗ {exc}")
             fail += 1
