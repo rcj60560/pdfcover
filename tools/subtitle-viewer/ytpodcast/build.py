@@ -29,8 +29,9 @@ STYLE = (
 )
 
 _TAG_RE = re.compile(r"<[^>]+>")
-_MARKER_RE = re.compile(r"\[(music|laughter|applause|applauding|silence|foreign|inaudible)[^\]]*\]",
-                        re.IGNORECASE)
+_MARKER_RE = re.compile(
+    r"\[(music|laughter|applause|applauding|silence|foreign|inaudible"
+    r"|笑声|掌声|音乐|静音|沉默|旁白|翻译|不可闻)[^\]]*\]", re.IGNORECASE)
 _SPEAK_RE = re.compile(r"^>>\s*")
 _SUB_SUFFIX_RE = re.compile(r"\.en(-orig|-US)?\.vtt$", re.IGNORECASE)
 _SENT_END_RE = re.compile(r"[.?!][\"')\]]?$")
@@ -119,6 +120,55 @@ def fmt_ts(sec: float) -> str:
     return f"{hours}:{minutes:02d}:{seconds:02d}" if hours else f"{minutes}:{seconds:02d}"
 
 
+def parse_lr_time(s: str) -> int | None:
+    """LR 时间列:'0s' / '1:01' / '1:01:05' → 秒;不识别返回 None。"""
+    s = str(s).strip()
+    m = re.fullmatch(r"(\d+)\s*s", s, re.IGNORECASE)
+    if m:
+        return int(m.group(1))
+    if re.fullmatch(r"(?:\d{1,2}:)?\d{1,2}:\d{2}", s):
+        p = [int(x) for x in s.split(":")]
+        while len(p) < 3:
+            p.insert(0, 0)
+        return p[0] * 3600 + p[1] * 60 + p[2]
+    return None
+
+
+def clean_zh_line(s: str) -> str:
+    """中文机翻行:剥 >> 说话人符与 [笑声] 类标记,压空白。"""
+    s = _SPEAK_RE.sub("", _MARKER_RE.sub("", str(s)))
+    return re.sub(r"\s+", " ", s).strip()
+
+
+def map_zh_cues(cues: list[tuple[int, str]], blocks: list[dict]) -> list[str]:
+    """带秒级时间戳的中文行 → 按「就近块区间」归属。
+
+    LR 行时间与块起点存在 ~1-2s 系统差,半开窗会把行漏给相邻块;
+    改为距块 [start,end] 区间最近者归属,双向修正漂移。
+    """
+    out = [""] * len(blocks)
+    for t, zh in cues:
+        best, best_d = None, None
+        for i, b in enumerate(blocks):
+            d = b["start"] - t if t < b["start"] else (t - b["end"] if t > b["end"] else 0)
+            if best_d is None or d <= best_d:            # 平局归后块:边界行属于即将开始的句子
+                best, best_d = i, d
+        if best is not None:
+            out[best] += zh                             # 中文拼接不加空格
+    return [o if o else "·" for o in out]
+
+
+def load_zh_cues(path: Path) -> list[tuple[int, str]]:
+    """`翻译/EPxx-zh.cues.txt`,每行 `秒|中文`(由 LR xlsx 转换而来)。"""
+    cues: list[tuple[int, str]] = []
+    for line in path.read_text(encoding="utf-8").splitlines():
+        t, _, zh = line.partition("|")
+        zh = clean_zh_line(zh)
+        if zh and t.strip().isdigit():
+            cues.append((int(t), zh))
+    return cues
+
+
 def split_align_blocks(text: str) -> list[str]:
     """排版产物(空行分隔的中文块)→ 列表;容忍多空行。"""
     return [b.strip() for b in re.split(r"\n\s*\n", text.strip()) if b.strip()]
@@ -130,12 +180,16 @@ def en_only(ep_title: str, blocks: list[dict]) -> str:
 
 
 def build_md(ep_title: str, audio_name: str, blocks: list[dict],
-             zh: list[str] | None = None) -> str:
+             zh: list[str] | None = None, zh_source: str | None = None) -> str:
     zh = list(zh or []) + [None] * len(blocks)
     zh = zh[: len(blocks)]                            # 部分对齐:短于块数时尾部补 None
     covered = sum(1 for z in zh if z and z.strip() != "·")   # · = 无译文占位,不计数
-    zh_label = ("欧路精翻" if covered == len(blocks)
-                else f"欧路精翻(部分 {covered}/{len(blocks)})") if covered else "暂无(后续可补)"
+    if zh_source:
+        zh_label = (zh_source if covered == len(blocks)
+                    else f"{zh_source}(部分 {covered}/{len(blocks)})")
+    else:
+        zh_label = ("欧路精翻" if covered == len(blocks)
+                    else f"欧路精翻(部分 {covered}/{len(blocks)})") if covered else "暂无(后续可补)"
     head = (
         f"# {ep_title}\n\n"
         f"> 来源: English Leap Podcast(Speak English with Class)· 音频 书库「youtube-podcast」{audio_name}\n"
@@ -198,14 +252,21 @@ def main(argv: list[str] | None = None) -> None:
         cues = parse_vtt(vtt.read_text(encoding="utf-8", errors="replace"))
         blocks = merge_cues(cues)
         audio = f"{stem}.mp3"
-        align_file = src / "翻译" / f"{stem[:4]}-align.txt"
-        zh = (split_align_blocks(align_file.read_text(encoding="utf-8"))
-              if align_file.is_file() else [])
-        if len(zh) > len(blocks):
-            print(f"{stem}: ⚠ 对齐块数超出({len(zh)}/{len(blocks)}),本集先出纯英文")
-            zh = []
+        zh, zh_source = [], None
+        cues_file = src / "翻译" / f"{stem[:4]}-zh.cues.txt"
+        if cues_file.is_file():                       # LR 机翻:时间轴直配,优先
+            zh = map_zh_cues(load_zh_cues(cues_file), blocks)
+            zh_source = "LR 机翻·时间轴直配"
+        if not zh:
+            align_file = src / "翻译" / f"{stem[:4]}-align.txt"
+            if align_file.is_file():
+                zh = split_align_blocks(align_file.read_text(encoding="utf-8"))
+                if len(zh) > len(blocks):
+                    print(f"{stem}: ⚠ 对齐块数超出({len(zh)}/{len(blocks)}),本集先出纯英文")
+                    zh = []
         md_path = out / f"{stem}.md"
-        md_path.write_text(build_md(stem, audio, blocks, zh=zh or None), encoding="utf-8")
+        md_path.write_text(build_md(stem, audio, blocks, zh=zh or None, zh_source=zh_source),
+                           encoding="utf-8")
         has_audio = (src / audio).is_file()
         print(f"{stem}: {len(cues)} cues → {len(blocks)} 句块"
               f"{' +中文' if zh else ''}"

@@ -44,6 +44,29 @@ def test_build_md_反转义HTML实体():
     assert "**>> hello & welcome**" in md          # 显示层反转义(解析层不动,块数与对齐锁死)
 
 
+def test_parse_lr_xlsx_无需openpyxl的纯逻辑():
+    from ytpodcast.build import clean_zh_line, parse_lr_time
+    assert clean_zh_line(">> 是的，欢迎。") == "是的，欢迎。"
+    assert clean_zh_line("这里 [笑声] 很好") == "这里 很好"
+    assert clean_zh_line("  保持 原样  ") == "保持 原样"
+    assert parse_lr_time("0s") == 0
+    assert parse_lr_time("1:01") == 61
+    assert parse_lr_time("1:01:05") == 3665
+    assert parse_lr_time("abc") is None
+
+
+def test_map_zh_cues_按时间窗落位():
+    from ytpodcast.build import map_zh_cues
+    blocks = [
+        {"start": 0.0, "end": 5.0, "text": "A"},
+        {"start": 5.0, "end": 12.0, "text": "B"},
+        {"start": 12.0, "end": 20.0, "text": "C"},
+    ]
+    cues = [(0, "甲一。"), (3, "甲二。"), (5, "乙。"), (19, "丙。"), (25, "窗外。")]
+    zh = map_zh_cues(cues, blocks)
+    assert zh == ["甲一。甲二。", "乙。", "丙。窗外。"]  # 边界 t=5 归后块;末尾超界归最近末块
+
+
 ROLLING = """WEBVTT
 Kind: captions
 Language: en
