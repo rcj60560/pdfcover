@@ -37,6 +37,13 @@ def test_parse_vtt_strips_tags_and_inline_ts():
     assert parse_vtt(vtt) == [(1.0, 2.0, "welcome back.")]
 
 
+def test_build_md_反转义HTML实体():
+    from ytpodcast.build import build_md
+    blocks = [{"start": 1.0, "end": 2.0, "text": "&gt;&gt; hello &amp; welcome"}]
+    md = build_md("EP01 - T", "EP01 - T.mp3", blocks)
+    assert "**>> hello & welcome**" in md          # 显示层反转义(解析层不动,块数与对齐锁死)
+
+
 ROLLING = """WEBVTT
 Kind: captions
 Language: en

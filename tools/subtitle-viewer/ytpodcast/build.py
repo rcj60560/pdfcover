@@ -13,6 +13,7 @@
 from __future__ import annotations
 
 import argparse
+import html
 import re
 from pathlib import Path
 
@@ -145,7 +146,8 @@ def build_md(ep_title: str, audio_name: str, blocks: list[dict],
     for i, b in enumerate(blocks):
         end = blocks[i + 1]["start"] if i + 1 < len(blocks) else max(b["end"], b["start"] + 5)
         end = max(end, b["start"] + 0.5)
-        block = f"---\n\n`{fmt_ts(b['start'])} → {fmt_ts(end)}`\n\n**{b['text']}**"
+        en = html.unescape(b["text"])                  # 显示层反转义,不动分段(块数与对齐文件锁死)
+        block = f"---\n\n`{fmt_ts(b['start'])} → {fmt_ts(end)}`\n\n**{en}**"
         if zh[i] and zh[i].strip() != "·":
             block += f"\n\n{zh[i]}"
         parts.append(block)
