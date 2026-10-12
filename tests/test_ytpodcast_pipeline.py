@@ -138,6 +138,13 @@ def test_split_align_blocks_空行切分容忍多空行():
     assert split_align_blocks("") == []
 
 
+def test_parse_numbered_segments_编号对齐与缺号():
+    from ytpodcast.align_zh import parse_numbered_segments
+    out = "[001] 甲\n\n[002] 乙\n\n[004] 丁\n\n[005] 多行\n第二行\n"
+    assert parse_numbered_segments(out) == {
+        1: "甲", 2: "乙", 4: "丁", 5: "多行\n第二行"}
+
+
 def test_build_md_注入中文():
     from ytpodcast.build import build_md
     blocks = [

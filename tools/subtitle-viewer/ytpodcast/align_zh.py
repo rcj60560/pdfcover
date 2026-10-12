@@ -11,7 +11,7 @@ cmd 重定向到临时文件,超时也能拿到已产出内容。中文来源:�
 from __future__ import annotations
 
 import argparse
-import shlex
+import re
 import shutil
 import subprocess
 import sys
@@ -29,7 +29,7 @@ PROMPT_TEMPLATE = """你是双语字幕排版器。任务:把整段中文译文�
 
 规则:
 1. 共 {count} 个英文字幕块,输出必须正好 {count} 段中文,按顺序一一对应。
-2. 每段中文单独成块,块与块之间空一行;不要序号、不要解释、不要 markdown 代码块。
+2. 每段中文单独成块,块与块之间空一行;每段开头写方括号序号,与英文字幕块编号一致(如 [007]);不要解释、不要 markdown 代码块。
 3. 句中被切断的块,中文跟着同一语义点切断,跨块连读仍是完整通顺的一句。
 4. 译文以给定中文为准,只修明显硬伤(错字、换行接缝断裂、拼音转写错误),不要改写风格。
 5. 任何一段都不能为空;某块英文对应的中文极短时给几个字即可。
@@ -86,6 +86,14 @@ def find_zh_file(zh_dir: Path, ep_id: str) -> Path | None:
     return None
 
 
+def parse_numbered_segments(text: str) -> dict[int, str]:
+    """`[007] 中文` 形式的排版输出 → {序号: 中文};序号漂移/合并由缺号自然暴露。"""
+    segs: dict[int, str] = {}
+    for m in re.finditer(r"^\[(\d{1,4})\]\s*(.+?)(?=\n\s*\n|\Z)", text, re.S | re.M):
+        segs[int(m.group(1))] = m.group(2).strip()
+    return segs
+
+
 def align_episode(blocks: list[dict], chinese: str, tmp_dir: Path, ep_id: str) -> list[str]:
     prompt = PROMPT_TEMPLATE.format(
         count=len(blocks),
@@ -93,10 +101,13 @@ def align_episode(blocks: list[dict], chinese: str, tmp_dir: Path, ep_id: str) -
         chinese=chinese,
     )
     out = run_claude_to_file(prompt, tmp_dir / f"_align_out.{ep_id}.tmp")
-    zh = split_align_blocks(out)
-    if len(zh) != len(blocks):
-        raise RuntimeError(f"对齐块数不符: {len(zh)}/{len(blocks)}")
-    return zh
+    segs = parse_numbered_segments(out)
+    if len(segs) < len(blocks) * 0.3:                    # 编号解析基本失败 → 兜底老格式
+        zh = split_align_blocks(out)
+        if len(zh) != len(blocks):
+            raise RuntimeError(f"对齐块数不符: {len(zh)}/{len(blocks)}")
+        return zh
+    return [segs.get(i, "·") for i in range(1, len(blocks) + 1)]
 
 
 def main(argv: list[str] | None = None) -> None:
