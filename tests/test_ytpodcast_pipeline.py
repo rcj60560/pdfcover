@@ -130,3 +130,33 @@ def test_en_only_整段不换行():
     assert out.startswith("# EP01 - Test")
     body = out.split("\n", 2)[-1]
     assert body.strip() == "First sentence. Second one."   # 单段,无硬换行(欧路整段翻译用)
+
+
+def test_split_align_blocks_空行切分容忍多空行():
+    from ytpodcast.align_zh import split_align_blocks
+    assert split_align_blocks("甲\n\n乙\n\n\n\n丙\n") == ["甲", "乙", "丙"]
+    assert split_align_blocks("") == []
+
+
+def test_build_md_注入中文():
+    from ytpodcast.build import build_md
+    blocks = [
+        {"start": 4.0, "end": 5.0, "text": "Hello world."},
+        {"start": 6.0, "end": 7.0, "text": "Good night."},
+    ]
+    md = build_md("EP01 - T", "EP01 - T.mp3", blocks, zh=["你好,世界。", "晚安。"])
+    assert "**Hello world.**\n\n你好,世界。" in md
+    assert "**Good night.**\n\n晚安。" in md
+    assert "欧路精翻" in md
+
+
+def test_build_md_部分中文与占位符():
+    from ytpodcast.build import build_md
+    blocks = [
+        {"start": 4.0, "end": 5.0, "text": "Hello world."},
+        {"start": 6.0, "end": 7.0, "text": "Good night."},
+    ]
+    md = build_md("EP01 - T", "EP01 - T.mp3", blocks, zh=["你好,世界。", "·"])  # · = 无译文占位
+    assert "**Hello world.**\n\n你好,世界。" in md
+    assert "**Good night.**\n\n·" not in md          # 占位符不渲染
+    assert "欧路精翻(部分 1/2)" in md

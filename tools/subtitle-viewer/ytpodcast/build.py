@@ -118,23 +118,37 @@ def fmt_ts(sec: float) -> str:
     return f"{hours}:{minutes:02d}:{seconds:02d}" if hours else f"{minutes}:{seconds:02d}"
 
 
+def split_align_blocks(text: str) -> list[str]:
+    """排版产物(空行分隔的中文块)→ 列表;容忍多空行。"""
+    return [b.strip() for b in re.split(r"\n\s*\n", text.strip()) if b.strip()]
+
+
 def en_only(ep_title: str, blocks: list[dict]) -> str:
     """整段英文(不硬换行,欧路词典整段翻译用),nce2 --en-only 同款。"""
     return f"# {ep_title} · 英文(待精翻)\n\n" + " ".join(b["text"] for b in blocks)
 
 
-def build_md(ep_title: str, audio_name: str, blocks: list[dict]) -> str:
+def build_md(ep_title: str, audio_name: str, blocks: list[dict],
+             zh: list[str] | None = None) -> str:
+    zh = list(zh or []) + [None] * len(blocks)
+    zh = zh[: len(blocks)]                            # 部分对齐:短于块数时尾部补 None
+    covered = sum(1 for z in zh if z and z.strip() != "·")   # · = 无译文占位,不计数
+    zh_label = ("欧路精翻" if covered == len(blocks)
+                else f"欧路精翻(部分 {covered}/{len(blocks)})") if covered else "暂无(后续可补)"
     head = (
         f"# {ep_title}\n\n"
         f"> 来源: English Leap Podcast(Speak English with Class)· 音频 书库「youtube-podcast」{audio_name}\n"
-        f"> 时间轴: `YouTube 原生字幕 句级合并` · 中文 `暂无(后续可补)` · 共 {len(blocks)} 条\n\n"
+        f"> 时间轴: `YouTube 原生字幕 句级合并` · 中文 `{zh_label}` · 共 {len(blocks)} 条\n\n"
         f"{STYLE}"
     )
     parts = []
     for i, b in enumerate(blocks):
         end = blocks[i + 1]["start"] if i + 1 < len(blocks) else max(b["end"], b["start"] + 5)
         end = max(end, b["start"] + 0.5)
-        parts.append(f"---\n\n`{fmt_ts(b['start'])} → {fmt_ts(end)}`\n\n**{b['text']}**")
+        block = f"---\n\n`{fmt_ts(b['start'])} → {fmt_ts(end)}`\n\n**{b['text']}**"
+        if zh[i] and zh[i].strip() != "·":
+            block += f"\n\n{zh[i]}"
+        parts.append(block)
     return head + "\n" + "\n\n".join(parts) + "\n"
 
 
@@ -182,10 +196,17 @@ def main(argv: list[str] | None = None) -> None:
         cues = parse_vtt(vtt.read_text(encoding="utf-8", errors="replace"))
         blocks = merge_cues(cues)
         audio = f"{stem}.mp3"
+        align_file = src / "翻译" / f"{stem[:4]}-align.txt"
+        zh = (split_align_blocks(align_file.read_text(encoding="utf-8"))
+              if align_file.is_file() else [])
+        if len(zh) > len(blocks):
+            print(f"{stem}: ⚠ 对齐块数超出({len(zh)}/{len(blocks)}),本集先出纯英文")
+            zh = []
         md_path = out / f"{stem}.md"
-        md_path.write_text(build_md(stem, audio, blocks), encoding="utf-8")
+        md_path.write_text(build_md(stem, audio, blocks, zh=zh or None), encoding="utf-8")
         has_audio = (src / audio).is_file()
         print(f"{stem}: {len(cues)} cues → {len(blocks)} 句块"
+              f"{' +中文' if zh else ''}"
               f"{' (音频在)' if has_audio else ' ⚠ 缺音频 ' + audio}")
     print(f"{len(eps)} 集 → {out}")
 
