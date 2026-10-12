@@ -118,6 +118,11 @@ def fmt_ts(sec: float) -> str:
     return f"{hours}:{minutes:02d}:{seconds:02d}" if hours else f"{minutes}:{seconds:02d}"
 
 
+def en_only(ep_title: str, blocks: list[dict]) -> str:
+    """整段英文(不硬换行,欧路词典整段翻译用),nce2 --en-only 同款。"""
+    return f"# {ep_title} · 英文(待精翻)\n\n" + " ".join(b["text"] for b in blocks)
+
+
 def build_md(ep_title: str, audio_name: str, blocks: list[dict]) -> str:
     head = (
         f"# {ep_title}\n\n"
@@ -148,6 +153,8 @@ def main(argv: list[str] | None = None) -> None:
     ap.add_argument("--src", type=Path, default=None, help="素材目录(默认 src_root/youtube-podcast)")
     ap.add_argument("--out", type=Path, default=None, help="md 输出目录(默认与素材同目录)")
     ap.add_argument("--limit", type=int, default=None, help="只处理前 N 集")
+    ap.add_argument("--en-only", action="store_true",
+                    help="只导出每集整段英文 txt 到 翻译/ 子目录(欧路精翻用)")
     args = ap.parse_args(argv)
 
     import json
@@ -160,6 +167,16 @@ def main(argv: list[str] | None = None) -> None:
         eps = eps[: args.limit]
     if not eps:
         raise SystemExit(f"素材目录没有 vtt:{src}")
+
+    if args.en_only:
+        zh_dir = src / "翻译"
+        zh_dir.mkdir(parents=True, exist_ok=True)
+        for stem, vtt in eps:
+            blocks = merge_cues(parse_vtt(vtt.read_text(encoding="utf-8", errors="replace")))
+            out = zh_dir / f"{stem[:4]}-英文.txt"
+            out.write_text(en_only(stem, blocks), encoding="utf-8")
+            print(f"{out.name}: {len(blocks)} 句")
+        return
 
     for stem, vtt in eps:
         cues = parse_vtt(vtt.read_text(encoding="utf-8", errors="replace"))

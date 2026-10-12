@@ -118,3 +118,15 @@ def test_build_md_块格式():
     assert "**Welcome back to the English Leap Podcast.**" in md
     assert "EP01 - Test Episode.mp3" in md
     assert "<style>" in md
+
+
+def test_en_only_整段不换行():
+    from ytpodcast.build import en_only
+    blocks = [
+        {"start": 1.0, "end": 2.0, "text": "First sentence."},
+        {"start": 3.0, "end": 4.0, "text": "Second one."},
+    ]
+    out = en_only("EP01 - Test", blocks)
+    assert out.startswith("# EP01 - Test")
+    body = out.split("\n", 2)[-1]
+    assert body.strip() == "First sentence. Second one."   # 单段,无硬换行(欧路整段翻译用)
