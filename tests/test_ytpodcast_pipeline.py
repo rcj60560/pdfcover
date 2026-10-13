@@ -37,6 +37,25 @@ def test_parse_vtt_strips_tags_and_inline_ts():
     assert parse_vtt(vtt) == [(1.0, 2.0, "welcome back.")]
 
 
+def test_merge_cues_一句一块与段内拆分():
+    from ytpodcast.build import merge_cues
+    cues = [
+        (0.0, 5.0, "Hello everyone"),                    # 无句尾,跨行
+        (5.0, 10.0, "and welcome. Today we talk."),       # 行内两句→按词比例拆时
+        (10.0, 15.0, "It is fun."),                       # 单句
+    ]
+    blocks = merge_cues(cues)
+    assert [b["text"] for b in blocks] == [
+        "Hello everyone and welcome.",
+        "Today we talk.",
+        "It is fun.",
+    ]
+    # 段内拆分:welcome.(2词) vs Today we talk.(3词) → 5.0+5*(2/5)=7.0
+    assert abs(blocks[0]["end"] - 7.0) < 0.01
+    assert blocks[1]["start"] == 7.0 and abs(blocks[1]["end"] - 10.0) < 0.01
+    assert blocks[2]["start"] == 10.0
+
+
 def test_build_md_反转义HTML实体():
     from ytpodcast.build import build_md
     blocks = [{"start": 1.0, "end": 2.0, "text": "&gt;&gt; hello &amp; welcome"}]
@@ -55,16 +74,30 @@ def test_parse_lr_xlsx_无需openpyxl的纯逻辑():
     assert parse_lr_time("abc") is None
 
 
-def test_map_zh_cues_按时间窗落位():
-    from ytpodcast.build import map_zh_cues
-    blocks = [
-        {"start": 0.0, "end": 5.0, "text": "A"},
-        {"start": 5.0, "end": 12.0, "text": "B"},
-        {"start": 12.0, "end": 20.0, "text": "C"},
+def test_build_window_blocks_窗口即块():
+    from ytpodcast.build import build_window_blocks
+    cues = [
+        (0.0, 3.0, "Hello everyone"), (3.0, 5.0, "out there."),
+        (5.0, 8.0, "Welcome back."), (8.0, 10.0, "Sit down."),
     ]
-    cues = [(0, "甲一。"), (3, "甲二。"), (5, "乙。"), (19, "丙。"), (25, "窗外。")]
-    zh = map_zh_cues(cues, blocks)
-    assert zh == ["甲一。甲二。", "乙。", "丙。窗外。"]  # 边界 t=5 归后块;末尾超界归最近末块
+    rows = [(0, "大家好。"), (5, "欢迎回来。")]
+    blocks = build_window_blocks(cues, rows)
+    assert [b["text"] for b in blocks] == ["Hello everyone out there.", "Welcome back. Sit down."]
+    assert [b["zh"] for b in blocks] == ["大家好。", "欢迎回来。"]
+    assert blocks[0]["start"] == 0.0 and blocks[0]["end"] == 5.0    # end=下一窗口起点
+    assert blocks[1]["end"] == 10.0                                  # 末块用 cue 末端
+
+
+def test_merge_cues_中文继承与语气碎句():
+    from ytpodcast.build import merge_cues
+    cues = [
+        (0.0, 2.0, "Yeah."),                          # 语气碎句并给下一句
+        (2.0, 8.0, "It works.", "管用。"),
+        (8.0, 12.0, "Hello there my friend.", "你好,朋友。"),
+    ]
+    blocks = merge_cues(cues)
+    assert [b["text"] for b in blocks] == ["Yeah. It works.", "Hello there my friend."]
+    assert [b["zh"] for b in blocks] == ["管用。", "你好,朋友。"]
 
 
 ROLLING = """WEBVTT
@@ -120,10 +153,11 @@ def test_merge_cues_句末断句():
     assert blocks[1]["start"] == 15.48
 
 
-def test_merge_cues_超长强制断与滚动去重():
+def test_merge_cues_超长强制断():
+    """滚动去重已在 parse_vtt 完成;merge 只管无标点超长强断。"""
     from ytpodcast.build import merge_cues
     cues = [(i * 5.0, i * 5.0 + 5, t)
-            for i, t in enumerate(["w0 w1 w2 w3", "w0 w1 w2 w3", "w4", "w5", "w6 w7", "w8", "w9"])]
+            for i, t in enumerate(["w0 w1 w2 w3", "w4", "w5", "w6 w7", "w8", "w9"])]
     blocks = merge_cues(cues, max_words=4)
     assert [b["text"] for b in blocks] == ["w0 w1 w2 w3", "w4 w5 w6 w7", "w8 w9"]
 

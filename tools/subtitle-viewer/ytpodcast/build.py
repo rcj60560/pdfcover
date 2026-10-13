@@ -35,6 +35,7 @@ _MARKER_RE = re.compile(
 _SPEAK_RE = re.compile(r"^>>\s*")
 _SUB_SUFFIX_RE = re.compile(r"\.en(-orig|-US)?\.vtt$", re.IGNORECASE)
 _SENT_END_RE = re.compile(r"[.?!][\"')\]]?$")
+_SENT_SPLIT_RE = re.compile(r"(?<=[.?!])\s+(?=[\"'A-Z])")   # 行内多句:句末标点后接大写/引号处切
 
 
 def _ts(s: str) -> float:
@@ -88,28 +89,73 @@ def parse_vtt(content: str) -> list[tuple[float, float, str]]:
     return cues
 
 
-def merge_cues(cues: list[tuple[float, float, str]],
-               max_words: int = 40) -> list[dict]:
-    """短语 cue 按句末标点合并成句块;滚动重复行去重;超长强制断。"""
+def build_window_blocks(cues: list[tuple], rows: list[tuple[int, str]]) -> list[dict]:
+    """以 LR 行(=YouTube 显示窗口,2 行英文一组)为块:窗口内 cue 拼接,中文=整行。
+
+    块切换节奏与 YouTube 播放器字幕完全一致;每块必带中文(窗口级 1:1)。
+    """
+    if not rows:
+        return []
     blocks: list[dict] = []
-    buf: list[str] = []
-    start = last_end = 0.0
-    prev_text: str | None = None
-    for s, e, text in cues:
-        if text == prev_text:                       # 自动字幕滚动窗口重复
-            last_end = max(last_end, e)
+    for i, (t, zh) in enumerate(rows):
+        hi = rows[i + 1][0] if i + 1 < len(rows) else float("inf")
+        win = [c for c in cues if t <= c[0] < hi]
+        if not win:
             continue
-        prev_text = text
+        blocks.append({"start": win[0][0], "end": win[0][0],
+                       "text": " ".join(c[2] for c in win), "zh": zh})
+    for i in range(len(blocks) - 1):                     # end = 下一块 start
+        blocks[i]["end"] = blocks[i + 1]["start"]
+    if blocks:
+        blocks[-1]["end"] = max(cues[-1][1], blocks[-1]["start"] + 0.5)
+    return blocks
+
+
+def merge_cues(cues: list[tuple], max_words: int = 40) -> list[dict]:
+    """一句一块:cue 内多句按词数比例拆时间戳,跨 cue 句子拼接;≤2 词语气碎句并给下一句。
+
+    cues 元素为 (start, end, text) 或 (start, end, text, zh);块携带 zh(各行中文拼接)。
+    end 为下一块 start(段内拆分即拆分点);末块 end 由 build_md 兜底 +5s。
+    """
+    norm = [(c[0], c[1], c[2], c[3] if len(c) > 3 else "") for c in cues]
+    # 1) 展开:cue → 句子碎片,行内多句按词数比例分配 [start,end] 窗口
+    pieces: list[tuple[float, str, str]] = []
+    for s, e, text, zh in norm:
+        sents = [x for x in _SENT_SPLIT_RE.split(text) if x.strip()]
+        if not sents:
+            continue
+        if len(sents) == 1:
+            pieces.append((s, sents[0], zh))
+            continue
+        words = [len(x.split()) for x in sents]
+        total = sum(words) or 1
+        dur = max(e - s, 0.5)
+        t = s
+        for k, (sent, w) in enumerate(zip(sents, words)):
+            pieces.append((round(t, 2), sent, zh if k == 0 else ""))  # 行级中文归首句
+            t += dur * w / total
+    # 2) 碎片 → 句块:句末标点收口(≤2 词语气句不收,并给下一句);无标点超长强断
+    blocks: list[dict] = []
+    buf, zh_buf, start = [], [], 0.0
+    for t, sent, zh in pieces:
         if not buf:
-            start = s
-        buf.append(text)
-        last_end = e
+            start = t
+        buf.append(sent)
+        if zh:
+            zh_buf.append(zh)
         joined = " ".join(buf)
-        if _SENT_END_RE.search(text) or len(joined.split()) >= max_words:
-            blocks.append({"start": start, "end": last_end, "text": joined})
-            buf = []
+        done = (_SENT_END_RE.search(sent) and len(joined.split()) >= 3) \
+            or len(joined.split()) >= max_words
+        if done:
+            blocks.append({"start": start, "end": t, "text": joined,
+                           "zh": "".join(zh_buf)})
+            buf, zh_buf = [], []
     if buf:
-        blocks.append({"start": start, "end": last_end, "text": " ".join(buf)})
+        blocks.append({"start": start, "end": blocks[-1]["start"] if blocks else 0.0,
+                       "text": " ".join(buf), "zh": "".join(zh_buf)})
+    # 3) end 统一取下一块 start(= 拆分点),末块留给 build_md 兜底
+    for i in range(len(blocks) - 1):
+        blocks[i]["end"] = blocks[i + 1]["start"]
     return blocks
 
 
@@ -138,24 +184,6 @@ def clean_zh_line(s: str) -> str:
     """中文机翻行:剥 >> 说话人符与 [笑声] 类标记,压空白。"""
     s = _SPEAK_RE.sub("", _MARKER_RE.sub("", str(s)))
     return re.sub(r"\s+", " ", s).strip()
-
-
-def map_zh_cues(cues: list[tuple[int, str]], blocks: list[dict]) -> list[str]:
-    """带秒级时间戳的中文行 → 按「就近块区间」归属。
-
-    LR 行时间与块起点存在 ~1-2s 系统差,半开窗会把行漏给相邻块;
-    改为距块 [start,end] 区间最近者归属,双向修正漂移。
-    """
-    out = [""] * len(blocks)
-    for t, zh in cues:
-        best, best_d = None, None
-        for i, b in enumerate(blocks):
-            d = b["start"] - t if t < b["start"] else (t - b["end"] if t > b["end"] else 0)
-            if best_d is None or d <= best_d:            # 平局归后块:边界行属于即将开始的句子
-                best, best_d = i, d
-        if best is not None:
-            out[best] += zh                             # 中文拼接不加空格
-    return [o if o else "·" for o in out]
 
 
 def load_zh_cues(path: Path) -> list[tuple[int, str]]:
@@ -250,14 +278,15 @@ def main(argv: list[str] | None = None) -> None:
 
     for stem, vtt in eps:
         cues = parse_vtt(vtt.read_text(encoding="utf-8", errors="replace"))
-        blocks = merge_cues(cues)
         audio = f"{stem}.mp3"
         zh, zh_source = [], None
         cues_file = src / "翻译" / f"{stem[:4]}-zh.cues.txt"
-        if cues_file.is_file():                       # LR 机翻:时间轴直配,优先
-            zh = map_zh_cues(load_zh_cues(cues_file), blocks)
-            zh_source = "LR 机翻·时间轴直配"
-        if not zh:
+        if cues_file.is_file():                       # LR 机翻:显示窗口即块,中文 1:1
+            blocks = build_window_blocks(cues, load_zh_cues(cues_file))
+            zh = [b.get("zh", "") for b in blocks]
+            zh_source = "LR 机翻·窗口直配"
+        else:
+            blocks = merge_cues(cues)
             align_file = src / "翻译" / f"{stem[:4]}-align.txt"
             if align_file.is_file():
                 zh = split_align_blocks(align_file.read_text(encoding="utf-8"))
@@ -269,7 +298,7 @@ def main(argv: list[str] | None = None) -> None:
                            encoding="utf-8")
         has_audio = (src / audio).is_file()
         print(f"{stem}: {len(cues)} cues → {len(blocks)} 句块"
-              f"{' +中文' if zh else ''}"
+              f"{' +中文' if any(zh) else ''}"
               f"{' (音频在)' if has_audio else ' ⚠ 缺音频 ' + audio}")
     print(f"{len(eps)} 集 → {out}")
 
