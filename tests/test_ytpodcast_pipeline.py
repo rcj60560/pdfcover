@@ -231,3 +231,90 @@ def test_build_md_部分中文与占位符():
     assert "**Hello world.**\n\n你好,世界。" in md
     assert "**Good night.**\n\n·" not in md          # 占位符不渲染
     assert "欧路精翻(部分 1/2)" in md
+
+
+# ---- lr_xlsx:LR(Language Reactor)导出 xlsx → 翻译/EPxx-zh.cues.txt ----
+
+def test_norm_en_小写去标点压空白():
+    from ytpodcast.lr_xlsx import norm_en
+    assert norm_en("Hello, World! It's fine.") == "hello world its fine"
+
+
+def test_match_episode_按内容指纹命中():
+    from ytpodcast.lr_xlsx import match_episode
+    eps = {
+        "EP11": "welcome back to the english leap podcast hey learners "
+                "today we talk about daily life in english",
+        "EP12": "the power of not reacting keep your calm",
+    }
+    rows_en = ["Welcome back to the English Leap Podcast.",
+               "Hey learners, today we talk about daily life in english."]
+    assert match_episode(rows_en, eps) == "EP11"
+
+
+def test_match_episode_无关内容返回None():
+    from ytpodcast.lr_xlsx import match_episode
+    eps = {"EP11": "welcome back to the english leap podcast hey learners"}
+    rows_en = ["Cooking pasta with olive oil and garlic tonight for dinner.",
+               "The recipe needs basil and parmesan cheese too."]
+    assert match_episode(rows_en, eps) is None
+
+
+def test_match_episode_通用英文不误报集():
+    """真实失效模式:字符二元组对任何英文都有 ~0.7 召回——BBC 等无关转写被误配。
+    词 4-gram 中段指纹:通用英文对本系列任何集都应接近 0 分。"""
+    from ytpodcast.lr_xlsx import match_episode
+    boiler = ("welcome back to the english leap podcast from speak english with class "
+              "hey english learners welcome back to your cozy place to learn easy english ")
+    eps = {
+        "EP11": boiler + ("today we talk about daily life routines in english "
+                          "my morning starts with coffee and a short walk outside " * 12).strip(),
+        "EP12": boiler + ("the power of not reacting keeps your mind calm and steady "
+                          "when people push your buttons just breathe and let it go " * 12).strip(),
+    }
+    rows_en = [("this bbc podcast is supported by ads outside the uk we have lots more "
+                "to help you make sense of the news download the app"),
+               ("our story begins in a small village where the old baker wakes before dawn "
+                "to light the oven and knead the dough for the morning bread")]
+    assert match_episode(rows_en, eps) is None
+
+
+def test_match_episode_中段内容区分同开头集():
+    """各集开场白相同:指纹取中段词 4-gram,命中正确集而非同开头的邻居。"""
+    from ytpodcast.lr_xlsx import match_episode
+    boiler = ("welcome back to the english leap podcast hey english learners "
+              "this is your cozy place to learn easy english through real conversations ")
+    eps = {
+        "EP11": boiler + "today we talk about daily life routines in english " * 8,
+        "EP12": boiler + "the power of not reacting keeps your mind calm and steady " * 8,
+    }
+    rows_en = [boiler, "Today we talk about daily life routines in English."]
+    assert match_episode(rows_en, eps) == "EP11"
+
+
+def test_match_episode_词序打乱不算同一集():
+    """字符二元组只看字母搭配不看词序——同词表乱序的"通用英文"照样高分(真实事故:
+    BBC 转写 0.79 误配 EP18);词 4-gram 指纹必须看语序,乱序不认。"""
+    from ytpodcast.lr_xlsx import match_episode
+    text = ("today we talk about daily life routines in english and how to describe "
+            "your morning with simple words that people really use in conversation")
+    shuffled = " ".join(reversed(text.split()))
+    assert match_episode([shuffled], {"EP11": text}) is None
+
+
+def test_clean_en_line_LR标记剥离():
+    """LR 英文列保留 >> / [music] 原始标记(vtt 解析层会剥,LR 不会),指纹前先剥掉。"""
+    from ytpodcast.lr_xlsx import clean_en_line
+    assert clean_en_line("Podcast >> from Speak English with Claus. [music]") \
+        == "Podcast from Speak English with Claus."
+    assert clean_en_line("  keep  inner  spaces  ") == "keep inner spaces"
+
+
+def test_match_episode_绝对分不高但断层领先也命中():
+    """真实事故:389969→EP06 绝对分仅 0.78(LR 与 vtt 词形差异),阈值 0.8 差一步;
+    但对邻集断层领先(第二名 0.04)——够高且 ≥2 倍第二名也应命中。"""
+    from ytpodcast.lr_xlsx import match_episode
+    hit = " ".join(f"morning routine step {i} of my day" for i in range(15))   # 全在 EP11
+    noise = " ".join(f"xylophone quizz v{i}" for i in range(8))                # 谁都不在
+    eps = {"EP11": hit, "EP12": "the power of not reacting keeps your mind calm"}
+    assert match_episode([hit + " " + noise], eps) == "EP11"
