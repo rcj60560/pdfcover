@@ -1,0 +1,28 @@
+{
+  "accounts": [
+    {
+      "name": "A主号",
+      "token": "把Fiddler抓到的Authorization整串贴到这里(README有教程)",
+      "hours": "09:00-12:00",
+      "field": "any"
+    },
+    {
+      "name": "B小号",
+      "token": "可选第二个微信号,留空则只用A",
+      "hours": "11:00-12:00",
+      "field": "any"
+    }
+  ],
+  "venue": {
+    "business_id": "10001939",
+    "stadium_id": "13256",
+    "ground_id": "13256001"
+  },
+  "snipe": {
+    "publish_hour": 9,
+    "fast_interval_ms": 350,
+    "fast_seconds": 30,
+    "slow_interval_ms": 1000,
+    "max_minutes": 5
+  }
+}

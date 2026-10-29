@@ -1,0 +1,12 @@
+name = "订场秒抢"
+desc = "球馆9点放场自动下单(wesais/微赛)网页版:配偏好/看矩阵/一键抢,下单锁场后人工付款"
+category = "生活"
+status = "ready"
+
+[run]
+cmd = ["python", "web.py"]
+port = 8900
+url = "http://127.0.0.1:8900"
+
+[links]
+live = ""

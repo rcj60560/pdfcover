@@ -1,0 +1,296 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>订场秒抢</title>
+<style>
+  :root{--blue:#2563eb;--green:#16a34a;--red:#dc2626;--muted:#6b7280}
+  *{box-sizing:border-box}
+  body{margin:0;background:#f3f4f6;font:14px/1.6 "Microsoft YaHei",system-ui,sans-serif;color:#111827}
+  .wrap{max-width:1080px;margin:0 auto;padding:16px}
+  header{display:flex;align-items:center;gap:12px;margin-bottom:14px}
+  header h1{font-size:20px;margin:0}
+  .dot{width:10px;height:10px;border-radius:50%;background:#9ca3af;display:inline-block}
+  .dot.ok{background:var(--green)} .dot.bad{background:var(--red)}
+  #serverTime{color:var(--muted);margin-left:auto;font-variant-numeric:tabular-nums}
+  .card{background:#fff;border:1px solid #e5e7eb;border-radius:10px;padding:14px 16px;margin-bottom:14px}
+  .card h2{font-size:15px;margin:0 0 10px;display:flex;align-items:center;gap:10px}
+  .acc{border:1px solid #e5e7eb;border-radius:8px;padding:10px 12px;margin-bottom:10px}
+  .acc .tag{display:inline-block;background:#1d4ed8;color:#fff;border-radius:6px;
+            padding:1px 10px;font-size:13px;margin-right:8px}
+  .acc.b .tag{background:#7c3aed}
+  input[type=text],select{padding:6px 8px;border:1px solid #d1d5db;border-radius:6px;font-size:14px}
+  button{padding:7px 16px;border:0;border-radius:7px;background:var(--blue);color:#fff;font-size:14px;cursor:pointer}
+  button.ghost{background:#e5e7eb;color:#374151}
+  button.green{background:var(--green)} button.red{background:var(--red)}
+  button:disabled{opacity:.5;cursor:not-allowed}
+  .row{display:flex;gap:8px;align-items:center;margin-bottom:8px;flex-wrap:wrap}
+  table.matrix{border-collapse:collapse;font-size:12px;font-variant-numeric:tabular-nums}
+  table.matrix th,table.matrix td{border:1px solid #e5e7eb;padding:3px 5px;text-align:center;min-width:44px}
+  table.matrix td.ok{background:#dcfce7;color:#166534;cursor:pointer}
+  table.matrix td.sel{background:#f59e0b;color:#fff;font-weight:700;outline:2px solid #ea580c}
+  table.matrix td.lock{background:#fee2e2;color:#991b1b}
+  table.matrix td.na{background:#f3f4f6;color:#9ca3af}
+  table.matrix td.over{background:#f3f4f6;color:#d1d5db;text-decoration:line-through}
+  table.matrix td.hit{outline:2px solid #f59e0b;outline-offset:-2px;font-weight:700}
+  #log{background:#0f172a;color:#e2e8f0;border-radius:8px;padding:10px;height:200px;overflow-y:auto;
+      font:12px/1.7 Consolas,monospace;white-space:pre-wrap}
+  .badge{display:inline-block;padding:2px 10px;border-radius:999px;font-size:12px;background:#e5e7eb;color:#374151}
+  .badge.waiting{background:#dbeafe;color:#1d4ed8}
+  .badge.polling{background:#fef3c7;color:#92400e}
+  .badge.matching{background:#fef3c7;color:#92400e}
+  .badge.success{background:#dcfce7;color:#166534}
+  .badge.failed{background:#fee2e2;color:#991b1b}
+  .badge.stopped{background:#e5e7eb;color:#6b7280}
+  #countdown{font-size:28px;font-weight:700;color:var(--blue);font-variant-numeric:tabular-nums;min-width:120px}
+  #overlay{position:fixed;inset:0;background:rgba(16,185,129,.95);color:#fff;display:none;
+           flex-direction:column;align-items:center;justify-content:center;z-index:99;text-align:center}
+  #overlay .big{font-size:34px;font-weight:800;margin:8px 0}
+  #overlay .ord{font-size:18px;background:rgba(0,0,0,.25);padding:6px 18px;border-radius:8px;margin:6px 0}
+  .hint{color:var(--muted);font-size:12px}
+  .preview{margin:6px 0;padding:6px 10px;background:#eff6ff;border-radius:6px;display:none}
+  .target{padding:8px 12px;background:#eff6ff;border-radius:8px;font-size:15px}
+  .target b{color:var(--blue)}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <h1>🏸 订场秒抢</h1>
+    <span id="serverTime"></span>
+  </header>
+
+  <div class="card">
+    <h2>① 账号与目标</h2>
+    <div class="acc">
+      <div class="row">
+        <span class="tag">主号</span>
+        <input type="text" id="tok0" style="flex:1" placeholder="eyJhbGciOi... 整串粘贴">
+        <button onclick="saveToken(0)">检测</button><span class="hint" id="tokTxt0"></span>
+      </div>
+      <div class="row" style="margin:0">
+        <select id="hs0"></select> 到 <select id="he0"></select>
+        <label>优先场地</label><select id="fld0"></select>
+      </div>
+    </div>
+    <div class="hint">免费(公益)时段每手机号每日限2小时(早上9-11是主战场),付费不限随时能订 → 默认 9-12 一单 = 2小时免费 + 1小时付费¥36,整单被拒自动降级只抢 9-11。<br>token 抓法:PC微信开小程序 → Fiddler 找 api.wesais.com → Authorization 整串</div>
+  </div>
+
+  <div class="card" id="matrixCard" style="display:none">
+    <h2>② 场地矩阵
+      <select id="mxDate" onchange="loadMatrix(this.value)" style="width:150px"></select>
+      <button class="ghost" onclick="health()">刷新</button>
+      <button class="green" id="btnOrder" style="margin-left:auto;display:none" onclick="orderNow()">立即下单</button></h2>
+    <div class="hint" style="margin-bottom:6px">点绿色格子选场(同一块场地可选多个时段)→ 立即下单,真实生成订单;<b>不付款 6 分钟自动取消</b>,想留就去微信付款。已订×/未开放·不可选</div>
+    <div class="preview" id="preview"></div>
+    <div style="overflow-x:auto"><table class="matrix" id="matrix"></table></div>
+  </div>
+
+  <div class="card">
+    <h2>③ 目标(只抢 9 点新放出来的那天)</h2>
+    <div class="target" id="targetTxt">贴 token 检测后自动推导…</div>
+  </div>
+
+  <div class="card">
+    <h2>④ 开抢 <span class="badge" id="phase">待机</span></h2>
+    <div class="row">
+      <button class="green" id="btnStart" onclick="startSnipe()">开始抢(自动等到放场)</button>
+      <button class="red" id="btnStop" onclick="stopSnipe()" disabled>停止</button>
+      <span id="countdown"></span>
+      <span class="hint">开始后页面别关;抢到全屏变绿+响铃,各账号 6 分钟内分别付款</span>
+    </div>
+    <div id="log"></div>
+  </div>
+</div>
+
+<div id="overlay">
+  <div class="big">🎉 抢到了!</div>
+  <div id="ovList"></div>
+  <div style="font-size:18px;margin-top:10px">⏰ 各订单 6 分钟内分别去对应微信付款,超时自动取消</div>
+  <button style="margin-top:20px;background:#fff;color:#16a34a" onclick="dismiss()">知道啦,去付款</button>
+</div>
+
+<script>
+let audioCtx = null, beepTimer = null, targetInfo = null;
+
+const $ = id => document.getElementById(id);
+const PHASE_TXT = {idle:'待机',waiting:'等待放场',polling:'轮询中',matching:'匹配下单',success:'成功',failed:'失败',stopped:'已停止'};
+
+function hourOpts(a,b){let s='';for(let h=a;h<=b;h++)s+=`<option>${String(h).padStart(2,'0')}:00</option>`;return s}
+function fieldOpts(){return '<option value="any">随机</option>'
+  + [...Array(12)].map((_,i)=>`<option value="${i+1}#">${i+1}#</option>`).join('')}
+function initAcc(i, start, end, field){
+  $('hs'+i).innerHTML=hourOpts(9,21); $('he'+i).innerHTML=hourOpts(10,22);
+  $('fld'+i).innerHTML=fieldOpts();
+  $('hs'+i).value=start; $('he'+i).value=end; $('fld'+i).value=field;
+}
+function getAccounts(){
+  return [{
+    hours: $('hs0').value+'-'+$('he0').value,
+    field: $('fld0').value
+  }];
+}
+
+// ---------- API ----------
+async function health(){
+  const r = await (await fetch('/api/health')).json();
+  const st = (r.accounts||[])[0];
+  if(st){
+    $('tokTxt0').textContent = st.ok? `✓ ${st.head}...` : '✗ 失效/未配';
+    $('tokTxt0').style.color = st.ok? '#16a34a' : '#dc2626';
+  }
+  if(r.ok){
+    targetInfo = r;
+    $('targetTxt').innerHTML = `自动目标:<b>${r.target_week} ${r.target}</b>`
+      + (r.published ? ' · 明天 9:00 放场(今天的已放完)'
+                     : ' · <b>今天 9:00</b> 放场,到点自动盲抢');
+    $('mxDate').innerHTML = r.dates.map(d=>`<option value="${d}">${d}</option>`).join('');
+    $('mxDate').value = r.latest;
+    loadMatrix(r.latest);   // token有效 → 自动展示当前最远一天矩阵
+  }
+  return r;
+}
+async function saveToken(i){
+  const r = await fetch('/api/token',{method:'POST',headers:{'Content-Type':'application/json'},
+    body:JSON.stringify({idx:i, token:$('tok'+i).value.trim()})});
+  const j = await r.json();
+  $('tokTxt'+i).textContent = j.ok? '✓ 有效' : '✗ '+(j.error||'');
+  $('tokTxt'+i).style.color = j.ok? '#16a34a' : '#dc2626';
+  if(j.ok) health();
+}
+async function loadMatrix(date){
+  try{
+    const wants = getAccounts().map(a=>({hours:a.hours, fields:a.field==='any'?['any']:[a.field,'any']}));
+    const r = await fetch('/api/matrix',{method:'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({date, wants})});
+    renderMatrix(await r.json());
+  }catch(e){ $('matrixCard').style.display='none'; }
+}
+
+let selCells = {};   // {场地: [{t, sku, p}]}
+function renderMatrix(j){
+  selCells = {}; updateOrderBtn();
+  $('matrixCard').style.display='';
+  let html = '<tr><th>时段\\场地</th>' + j.fields.map(f=>`<th>${f}</th>`).join('') + '</tr>';
+  for(const t of j.times){
+    html += `<tr><th>${t.replace('--','-')}</th>`;
+    for(const f of j.fields){
+      const c = j.cells[f+'|'+t]||{s:'na',p:''};
+      const txt = c.s==='ok'? '√'+c.p : c.s==='lock'? '×' : c.s==='over'? '过':'·';
+      const attrs = c.s==='ok'
+        ? ` onclick="toggleCell(this)" data-f="${f}" data-t="${t}" data-sku="${c.sku||''}" data-p="${+c.p||0}"` : '';
+      html += `<td class="${c.s}"${attrs}>${txt}</td>`;
+    }
+    html += '</tr>';
+  }
+  $('matrix').innerHTML = html;
+  // 预演高亮(①里的偏好若在这天会命中)
+  if(j.preview && j.preview.length){
+    const p = j.preview[0];
+    $('preview').style.display='';
+    $('preview').innerHTML = `偏好预演:<b>${p.hours} ${p.field}</b> (${p.times.join(' + ')})`;
+    p.times.forEach(t=>{
+      const idx = j.fields.indexOf(p.field)+1;
+      const tr = $('matrix').rows[j.times.indexOf(t)+1];
+      if(tr && tr.cells[idx]) tr.cells[idx].classList.add('hit');
+    });
+  } else {
+    $('preview').style.display=''; $('preview').innerHTML='偏好预演:该时段这天<b>无可订组合</b>';
+  }
+}
+function toggleCell(td){
+  const f = td.dataset.f;
+  if(Object.keys(selCells).length && !selCells[f]){  // 换场地 → 自动清掉旧选择
+    selCells = {};
+    document.querySelectorAll('#matrix td.sel').forEach(x=>x.classList.remove('sel'));
+  }
+  if(td.classList.toggle('sel'))
+    selCells[f] = [...(selCells[f]||[]), {t:td.dataset.t, sku:td.dataset.sku, p:+td.dataset.p||0}];
+  else {
+    selCells[f] = selCells[f].filter(x=>x.t!==td.dataset.t);
+    if(!selCells[f].length) delete selCells[f];
+  }
+  updateOrderBtn();
+}
+function updateOrderBtn(){
+  const btn = $('btnOrder');
+  const f = Object.keys(selCells)[0];
+  if(!f){ btn.style.display='none'; return; }
+  const items = selCells[f];
+  const times = items.map(x=>x.t.replace('--','-').slice(0,5)).sort().join(' ');
+  btn.style.display='';
+  btn.textContent = `立即下单: ${f} ${times}时 ¥${items.reduce((a,x)=>a+x.p,0)}`;
+}
+async function orderNow(){
+  if(!audioCtx) audioCtx = new (window.AudioContext||window.webkitAudioContext)();
+  const f = Object.keys(selCells)[0];
+  const items = selCells[f], date = $('mxDate').value;
+  if(!confirm(`${date} ${f}\n` + items.map(x=>`  ${x.t.replace('--','-')} ¥${x.p}`).join('\n')
+    + `\n合计 ¥${items.reduce((a,x)=>a+x.p,0)}\n\n真实下单?(不付款6分钟自动取消,想留就尽快微信付款)`)) return;
+  const r = await fetch('/api/order',{method:'POST',headers:{'Content-Type':'application/json'},
+    body:JSON.stringify({date, skus:items.map(x=>x.sku)})});
+  const j = await r.json();
+  if(j.ok){ showWin(j.result); loadMatrix(date); }
+  else alert(j.error||'下单失败');
+}
+
+async function startSnipe(){
+  if(!audioCtx) audioCtx = new (window.AudioContext||window.webkitAudioContext)();
+  if(!targetInfo) return alert('先检测 token');
+  const accs = getAccounts();
+  if(!confirm(`自动目标:${targetInfo.target_week} ${targetInfo.target}(9点放场)\n`
+    + `主号: ${accs[0].hours} ${accs[0].field==='any'?'随机':accs[0].field+'优先'}`
+    + '\n\n开始抢?(到点自动下单,响铃后6分钟内付款)')) return;
+  const r = await fetch('/api/snipe',{method:'POST',headers:{'Content-Type':'application/json'},
+    body:JSON.stringify({accounts:accs})});
+  const j = await r.json();
+  if(j.error) alert(j.error);
+}
+async function stopSnipe(){ await fetch('/api/stop',{method:'POST'}); }
+
+// ---------- 状态轮询 ----------
+function fmtClock(ts){const d=new Date(ts*1000);return d.toTimeString().slice(0,8)}
+async function tick(){
+  try{
+    const s = await (await fetch('/api/state')).json();
+    const ph = $('phase');
+    ph.className='badge '+s.phase; ph.textContent=PHASE_TXT[s.phase]||s.phase;
+    $('btnStop').disabled = ['idle','success','failed','stopped'].includes(s.phase);
+    $('btnStart').disabled = !['idle','success','failed','stopped'].includes(s.phase);
+    $('serverTime').textContent = '服务器 ' + fmtClock(s.server_now);
+    if(s.phase==='waiting' && s.trigger_at){
+      const left = s.trigger_at - s.server_now;
+      const h=Math.floor(left/3600), m=Math.floor(left%3600/60), sec=Math.floor(left%60);
+      $('countdown').textContent = (h?h+':':'') + `${String(m).padStart(2,'0')}:${String(sec).padStart(2,'0')}`;
+    } else $('countdown').textContent='';
+    const lg = $('log');
+    const txt = s.log.map(l=>`[${l.t}] ${l.m}`).join('\n');
+    if(lg.textContent!==txt){ lg.textContent=txt; lg.scrollTop=lg.scrollHeight; }
+    if(s.phase==='success' && s.result && $('overlay').style.display!=='flex') showWin(s.result);
+  }catch(e){}
+  setTimeout(tick,1000);
+}
+function showWin(r){
+  $('overlay').style.display='flex';
+  $('ovList').innerHTML = (r.orders||[]).map(o=>
+    `<div class="ord">${o.account} · 订单 ${o.order_no} · ¥${o.pay}<br>`
+    + o.items.map(i=>`<span style="font-size:14px">${i}</span>`).join(' / ') + '</div>').join('');
+  let n=0;
+  beepTimer=setInterval(()=>{
+    const o=audioCtx.createOscillator(),g=audioCtx.createGain();
+    o.frequency.value=1318;o.connect(g);g.connect(audioCtx.destination);
+    g.gain.setValueAtTime(.3,audioCtx.currentTime);
+    g.gain.exponentialRampToValueAtTime(.001,audioCtx.currentTime+.25);
+    o.start();o.stop(audioCtx.currentTime+.25);
+    if(++n>40)clearInterval(beepTimer);
+  },350);
+}
+function dismiss(){ $('overlay').style.display='none'; if(beepTimer)clearInterval(beepTimer); }
+
+initAcc(0, '09:00', '12:00', 'any');   // 9-12 一单(2免费+1付费;被拒自动降级9-11)
+health();
+tick();
+</script>
+</body>
+</html>
