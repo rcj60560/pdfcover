@@ -8,50 +8,46 @@
   :root{--blue:#2563eb;--green:#16a34a;--red:#dc2626;--muted:#6b7280}
   *{box-sizing:border-box}
   body{margin:0;background:#f3f4f6;font:14px/1.6 "Microsoft YaHei",system-ui,sans-serif;color:#111827}
-  .wrap{max-width:1080px;margin:0 auto;padding:16px}
+  .wrap{max-width:760px;margin:0 auto;padding:16px}
   header{display:flex;align-items:center;gap:12px;margin-bottom:14px}
   header h1{font-size:20px;margin:0}
-  .dot{width:10px;height:10px;border-radius:50%;background:#9ca3af;display:inline-block}
-  .dot.ok{background:var(--green)} .dot.bad{background:var(--red)}
   #serverTime{color:var(--muted);margin-left:auto;font-variant-numeric:tabular-nums}
   .card{background:#fff;border:1px solid #e5e7eb;border-radius:10px;padding:14px 16px;margin-bottom:14px}
-  .card h2{font-size:15px;margin:0 0 10px;display:flex;align-items:center;gap:10px}
-  .acc{border:1px solid #e5e7eb;border-radius:8px;padding:10px 12px;margin-bottom:10px}
-  .acc .tag{display:inline-block;background:#1d4ed8;color:#fff;border-radius:6px;
-            padding:1px 10px;font-size:13px;margin-right:8px}
-  .acc.b .tag{background:#7c3aed}
-  input[type=text],select{padding:6px 8px;border:1px solid #d1d5db;border-radius:6px;font-size:14px}
-  button{padding:7px 16px;border:0;border-radius:7px;background:var(--blue);color:#fff;font-size:14px;cursor:pointer}
-  button.ghost{background:#e5e7eb;color:#374151}
+  .card h2{font-size:15px;margin:0 0 10px}
+  .target{padding:10px 14px;background:#eff6ff;border-radius:8px;font-size:15px}
+  .target b{color:var(--blue)}
+  #countdown{font-size:26px;font-weight:700;color:var(--blue);
+             font-variant-numeric:tabular-nums;margin-left:8px}
+  .tokrow{display:flex;gap:8px;align-items:center;margin-bottom:8px}
+  .tokrow .nm{width:44px;font-weight:600}
+  input[type=text],input[type=date],select{padding:6px 8px;border:1px solid #d1d5db;
+        border-radius:6px;font-size:14px}
+  input[type=text]{flex:1}
+  button{padding:7px 16px;border:0;border-radius:7px;background:var(--blue);
+         color:#fff;font-size:14px;cursor:pointer}
+  button.ghost{background:#e5e5eb;color:#374151}
   button.green{background:var(--green)} button.red{background:var(--red)}
   button:disabled{opacity:.5;cursor:not-allowed}
-  .row{display:flex;gap:8px;align-items:center;margin-bottom:8px;flex-wrap:wrap}
-  table.matrix{border-collapse:collapse;font-size:12px;font-variant-numeric:tabular-nums}
-  table.matrix th,table.matrix td{border:1px solid #e5e7eb;padding:3px 5px;text-align:center;min-width:44px}
-  table.matrix td.ok{background:#dcfce7;color:#166534;cursor:pointer}
-  table.matrix td.sel{background:#f59e0b;color:#fff;font-weight:700;outline:2px solid #ea580c}
-  table.matrix td.lock{background:#fee2e2;color:#991b1b}
-  table.matrix td.na{background:#f3f4f6;color:#9ca3af}
-  table.matrix td.over{background:#f3f4f6;color:#d1d5db;text-decoration:line-through}
-  table.matrix td.hit{outline:2px solid #f59e0b;outline-offset:-2px;font-weight:700}
-  #log{background:#0f172a;color:#e2e8f0;border-radius:8px;padding:10px;height:200px;overflow-y:auto;
-      font:12px/1.7 Consolas,monospace;white-space:pre-wrap}
-  .badge{display:inline-block;padding:2px 10px;border-radius:999px;font-size:12px;background:#e5e7eb;color:#374151}
-  .badge.waiting{background:#dbeafe;color:#1d4ed8}
-  .badge.polling{background:#fef3c7;color:#92400e}
-  .badge.matching{background:#fef3c7;color:#92400e}
+  #btnStart{padding:12px 40px;font-size:18px;font-weight:700}
+  #alarm{display:none;background:#fee2e2;color:#991b1b;border-radius:8px;
+         padding:10px 14px;margin-top:8px;font-weight:600}
+  #log{background:#0f172a;color:#e2e8f0;border-radius:8px;padding:10px;height:240px;
+       overflow-y:auto;font:12px/1.7 Consolas,monospace;white-space:pre-wrap}
+  .badge{display:inline-block;padding:2px 10px;border-radius:999px;font-size:12px;
+         background:#e5e7eb;color:#374151;vertical-align:middle}
+  .badge.waiting,.badge.observing{background:#dbeafe;color:#1d4ed8}
+  .badge.polling,.badge.matching{background:#fef3c7;color:#92400e}
   .badge.success{background:#dcfce7;color:#166534}
   .badge.failed{background:#fee2e2;color:#991b1b}
-  .badge.stopped{background:#e5e7eb;color:#6b7280}
-  #countdown{font-size:28px;font-weight:700;color:var(--blue);font-variant-numeric:tabular-nums;min-width:120px}
+  details{border:1px solid #e5e7eb;border-radius:8px;padding:8px 12px;margin-bottom:10px}
+  summary{cursor:pointer;font-weight:600;color:#374151}
+  .hint{color:var(--muted);font-size:12px}
+  .frow{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin:8px 0}
   #overlay{position:fixed;inset:0;background:rgba(16,185,129,.95);color:#fff;display:none;
            flex-direction:column;align-items:center;justify-content:center;z-index:99;text-align:center}
   #overlay .big{font-size:34px;font-weight:800;margin:8px 0}
-  #overlay .ord{font-size:18px;background:rgba(0,0,0,.25);padding:6px 18px;border-radius:8px;margin:6px 0}
-  .hint{color:var(--muted);font-size:12px}
-  .preview{margin:6px 0;padding:6px 10px;background:#eff6ff;border-radius:6px;display:none}
-  .target{padding:8px 12px;background:#eff6ff;border-radius:8px;font-size:15px}
-  .target b{color:var(--blue)}
+  #overlay .ord{font-size:18px;background:rgba(0,0,0,.25);padding:6px 18px;
+                border-radius:8px;margin:6px 0}
 </style>
 </head>
 <body>
@@ -62,46 +58,47 @@
   </header>
 
   <div class="card">
-    <h2>① 账号与目标</h2>
-    <div class="acc">
-      <div class="row">
-        <span class="tag">主号</span>
-        <input type="text" id="tok0" style="flex:1" placeholder="eyJhbGciOi... 整串粘贴">
-        <button onclick="saveToken(0)">检测</button><span class="hint" id="tokTxt0"></span>
-      </div>
-      <div class="row" style="margin:0">
-        <select id="hs0"></select> 到 <select id="he0"></select>
-        <label>优先场地</label><select id="fld0"></select>
-      </div>
+    <div class="target" id="targetTxt">检测 token 后显示目标…</div>
+    <div class="frow" style="margin-top:8px">
+      <span>目标日期</span>
+      <select id="tDate" onchange="onDateChange(this.value)"></select>
+      <span class="hint" id="tDateHint"></span>
     </div>
-    <div class="hint">免费(公益)时段每手机号每日限2小时(早上9-11是主战场),付费不限随时能订 → 默认 9-12 一单 = 2小时免费 + 1小时付费¥36,整单被拒自动降级只抢 9-11。<br>token 抓法:PC微信开小程序 → Fiddler 找 api.wesais.com → Authorization 整串</div>
-  </div>
-
-  <div class="card" id="matrixCard" style="display:none">
-    <h2>② 场地矩阵
-      <select id="mxDate" onchange="loadMatrix(this.value)" style="width:150px"></select>
-      <button class="ghost" onclick="health()">刷新</button>
-      <button class="green" id="btnOrder" style="margin-left:auto;display:none" onclick="orderNow()">立即下单</button></h2>
-    <div class="hint" style="margin-bottom:6px">点绿色格子选场(同一块场地可选多个时段)→ 立即下单,真实生成订单;<b>不付款 6 分钟自动取消</b>,想留就去微信付款。已订×/未开放·不可选</div>
-    <div class="preview" id="preview"></div>
-    <div style="overflow-x:auto"><table class="matrix" id="matrix"></table></div>
   </div>
 
   <div class="card">
-    <h2>③ 目标(只抢 9 点新放出来的那天)</h2>
-    <div class="target" id="targetTxt">贴 token 检测后自动推导…</div>
+    <h2>Token(一个号绑一块场;Fiddler 抓 Authorization,每次抢前换新)</h2>
+    <div id="tokBox"></div>
+    <button class="ghost" id="btnAddTok" onclick="addTokRow()">+ 加一个号</button>
   </div>
 
   <div class="card">
-    <h2>④ 开抢 <span class="badge" id="phase">待机</span></h2>
-    <div class="row">
-      <button class="green" id="btnStart" onclick="startSnipe()">开始抢(自动等到放场)</button>
-      <button class="red" id="btnStop" onclick="stopSnipe()" disabled>停止</button>
-      <span id="countdown"></span>
-      <span class="hint">开始后页面别关;抢到全屏变绿+响铃,各账号 6 分钟内分别付款</span>
-    </div>
+    <h2>开抢 <span class="badge" id="phase">待机</span></h2>
+    <button class="green" id="btnStart" onclick="startSnipe()">🔥 开抢</button>
+    <button class="red" id="btnStop" onclick="stopSnipe()" disabled>停止</button>
+    <div id="alarm"></div>
+    <div class="hint" style="margin:8px 0 6px">固定抢早上 9–12 滑窗(9-11 锁格自动跳过,常态命中 11:00–13:00)。放场前几分钟点开抢即可,到点自动抢,响铃后各号 6 分钟内分别微信付款。日志存 logs/。</div>
     <div id="log"></div>
   </div>
+
+  <details>
+    <summary>测试下单(指定日期+场地+时段,平时验证用)</summary>
+    <div class="frow">
+      <input type="date" id="oDate">
+      <select id="oField"></select>
+      <select id="oStart"></select> – <select id="oEnd"></select>
+      <select id="oAcc"></select>
+      <button class="green" onclick="orderNow()">下单</button>
+    </div>
+    <div class="hint">真实订单,不付款 6 分钟自动取消;要留就尽快微信付款。日期须是已放场的(今天/明天/后天)。</div>
+  </details>
+
+  <details>
+    <summary>取证观察(不下单,回答 9-11 是不是根本没法抢)</summary>
+    <div class="hint" style="margin:6px 0">在 9 点放场<b>前</b>点开始:自动等到放场,之后 2 分钟密集快照矩阵,落盘 evidence/。
+    结束给结论——"放场即锁(内部圈场)"还是"有窗口被秒"。适合周四/周五早上 8:55 跑。</div>
+    <button class="ghost" onclick="startObserve()">开始取证观察</button>
+  </details>
 </div>
 
 <div id="overlay">
@@ -112,44 +109,30 @@
 </div>
 
 <script>
-let audioCtx = null, beepTimer = null, targetInfo = null;
+let audioCtx = null, beepTimer = null, healthInfo = null, tokCount = 0;
 
 const $ = id => document.getElementById(id);
-const PHASE_TXT = {idle:'待机',waiting:'等待放场',polling:'轮询中',matching:'匹配下单',success:'成功',failed:'失败',stopped:'已停止'};
+const PHASE_TXT = {idle:'待机',waiting:'等待放场',polling:'轮询中',matching:'匹配下单',
+  observing:'取证中',success:'成功',failed:'失败',stopped:'已停止'};
 
-function hourOpts(a,b){let s='';for(let h=a;h<=b;h++)s+=`<option>${String(h).padStart(2,'0')}:00</option>`;return s}
-function fieldOpts(){return '<option value="any">随机</option>'
-  + [...Array(12)].map((_,i)=>`<option value="${i+1}#">${i+1}#</option>`).join('')}
-function initAcc(i, start, end, field){
-  $('hs'+i).innerHTML=hourOpts(9,21); $('he'+i).innerHTML=hourOpts(10,22);
-  $('fld'+i).innerHTML=fieldOpts();
-  $('hs'+i).value=start; $('he'+i).value=end; $('fld'+i).value=field;
-}
-function getAccounts(){
-  return [{
-    hours: $('hs0').value+'-'+$('he0').value,
-    field: $('fld0').value
-  }];
-}
+function hourOpts(a,b,sel){let s='';for(let h=a;h<=b;h++)s+=`<option>${String(h).padStart(2,'0')}:00</option>`;return s}
 
-// ---------- API ----------
-async function health(){
-  const r = await (await fetch('/api/health')).json();
-  const st = (r.accounts||[])[0];
-  if(st){
-    $('tokTxt0').textContent = st.ok? `✓ ${st.head}...` : '✗ 失效/未配';
-    $('tokTxt0').style.color = st.ok? '#16a34a' : '#dc2626';
-  }
-  if(r.ok){
-    targetInfo = r;
-    $('targetTxt').innerHTML = `自动目标:<b>${r.target_week} ${r.target}</b>`
-      + (r.published ? ' · 明天 9:00 放场(今天的已放完)'
-                     : ' · <b>今天 9:00</b> 放场,到点自动盲抢');
-    $('mxDate').innerHTML = r.dates.map(d=>`<option value="${d}">${d}</option>`).join('');
-    $('mxDate').value = r.latest;
-    loadMatrix(r.latest);   // token有效 → 自动展示当前最远一天矩阵
-  }
-  return r;
+// ---------- token 行(一号绑一块场) ----------
+function addTokRow(){
+  const i = tokCount++;
+  const div = document.createElement('div');
+  div.className = 'tokrow';
+  const opts = '<option value="any">随机</option>'
+    + [...Array(12)].map((_,n)=>`<option value="${n+1}#">${n+1}#</option>`).join('');
+  div.innerHTML = `<span class="nm">${i==0?'主号':i==1?'小号':'号'+(i+1)}</span>
+    <input type="text" id="tok${i}" placeholder="eyJhbGciOi... 整串粘贴">
+    <select id="fld${i}" title="这个号绑哪块场">${opts}</select>
+    <button class="ghost" onclick="saveToken(${i})">检测</button>
+    <span class="hint" id="tokTxt${i}"></span>
+    ${i>1?`<button class="ghost" onclick="this.parentNode.remove()">✕</button>`:''}`;
+  $('tokBox').appendChild(div);
+  if(tokCount>=4) $('btnAddTok').style.display='none';
+  return i;
 }
 async function saveToken(i){
   const r = await fetch('/api/token',{method:'POST',headers:{'Content-Type':'application/json'},
@@ -159,106 +142,104 @@ async function saveToken(i){
   $('tokTxt'+i).style.color = j.ok? '#16a34a' : '#dc2626';
   if(j.ok) health();
 }
-async function loadMatrix(date){
+
+// ---------- health ----------
+async function health(){
   try{
-    const wants = getAccounts().map(a=>({hours:a.hours, fields:a.field==='any'?['any']:[a.field,'any']}));
-    const r = await fetch('/api/matrix',{method:'POST',headers:{'Content-Type':'application/json'},
-      body:JSON.stringify({date, wants})});
-    renderMatrix(await r.json());
-  }catch(e){ $('matrixCard').style.display='none'; }
-}
-
-let selCells = {};   // {场地: [{t, sku, p}]}
-function renderMatrix(j){
-  selCells = {}; updateOrderBtn();
-  $('matrixCard').style.display='';
-  let html = '<tr><th>时段\\场地</th>' + j.fields.map(f=>`<th>${f}</th>`).join('') + '</tr>';
-  for(const t of j.times){
-    html += `<tr><th>${t.replace('--','-')}</th>`;
-    for(const f of j.fields){
-      const c = j.cells[f+'|'+t]||{s:'na',p:''};
-      const txt = c.s==='ok'? '√'+c.p : c.s==='lock'? '×' : c.s==='over'? '过':'·';
-      const attrs = c.s==='ok'
-        ? ` onclick="toggleCell(this)" data-f="${f}" data-t="${t}" data-sku="${c.sku||''}" data-p="${+c.p||0}"` : '';
-      html += `<td class="${c.s}"${attrs}>${txt}</td>`;
-    }
-    html += '</tr>';
-  }
-  $('matrix').innerHTML = html;
-  // 预演高亮(①里的偏好若在这天会命中)
-  if(j.preview && j.preview.length){
-    const p = j.preview[0];
-    $('preview').style.display='';
-    $('preview').innerHTML = `偏好预演:<b>${p.hours} ${p.field}</b> (${p.times.join(' + ')})`;
-    p.times.forEach(t=>{
-      const idx = j.fields.indexOf(p.field)+1;
-      const tr = $('matrix').rows[j.times.indexOf(t)+1];
-      if(tr && tr.cells[idx]) tr.cells[idx].classList.add('hit');
+    const r = await (await fetch('/api/health')).json();
+    healthInfo = r;
+    (r.accounts||[]).forEach((st,i)=>{
+      const el = $('tokTxt'+i);
+      if(el){
+        el.textContent = st.ok? `✓ ${st.head}...` : '✗ 失效/未配';
+        el.style.color = st.ok? '#16a34a' : '#dc2626';
+      }
     });
+    if(r.target){
+      $('targetTxt').innerHTML = `下一个周末场:<b>${r.target_week} ${r.target}</b>`
+        + (r.target_day===new Date().toISOString().slice(0,10)
+           ? ` · <b>今天 9:00</b> 放场,贴好 token 点开抢` : ` · ${r.target_day} 9:00 放场`);
+    } else {
+      $('targetTxt').textContent = '8 天内没有周末场放场日——想测试就选个具体日期';
+    }
+    const sel = $('tDate');
+    const cur = sel.value || 'auto';
+    sel.innerHTML = '<option value="auto">自动(下一个周末场)</option>'
+      + (r.days||[]).map(d=>`<option value="${d.date}">${d.date} ${d.week}</option>`).join('');
+    sel.value = cur && (cur==='auto'||(r.days||[]).some(d=>d.date===cur)) ? cur : 'auto';
+    onDateChange(sel.value);
+    const accs = (r.accounts||[]).map((a,i)=>`<option value="${i}">${a.name}</option>`).join('');
+    $('oAcc').innerHTML = accs || '<option value="0">账号1</option>';
+  }catch(e){}
+}
+function onDateChange(v){
+  if(!healthInfo) return;
+  if(v==='auto'){
+    $('tDateHint').textContent = healthInfo.target
+      ? `${healthInfo.target_week} ${healthInfo.target},${healthInfo.target_day} 9:00 放场` : '';
   } else {
-    $('preview').style.display=''; $('preview').innerHTML='偏好预演:该时段这天<b>无可订组合</b>';
+    const d = new Date(v); d.setDate(d.getDate()-2);
+    const w = ['周日','周一','周二','周三','周四','周五','周六'][d.getDay()];
+    $('tDateHint').textContent = `${w}放场(=目标日-2 的 9:00)`;
   }
-}
-function toggleCell(td){
-  const f = td.dataset.f;
-  if(Object.keys(selCells).length && !selCells[f]){  // 换场地 → 自动清掉旧选择
-    selCells = {};
-    document.querySelectorAll('#matrix td.sel').forEach(x=>x.classList.remove('sel'));
-  }
-  if(td.classList.toggle('sel'))
-    selCells[f] = [...(selCells[f]||[]), {t:td.dataset.t, sku:td.dataset.sku, p:+td.dataset.p||0}];
-  else {
-    selCells[f] = selCells[f].filter(x=>x.t!==td.dataset.t);
-    if(!selCells[f].length) delete selCells[f];
-  }
-  updateOrderBtn();
-}
-function updateOrderBtn(){
-  const btn = $('btnOrder');
-  const f = Object.keys(selCells)[0];
-  if(!f){ btn.style.display='none'; return; }
-  const items = selCells[f];
-  const times = items.map(x=>x.t.replace('--','-').slice(0,5)).sort().join(' ');
-  btn.style.display='';
-  btn.textContent = `立即下单: ${f} ${times}时 ¥${items.reduce((a,x)=>a+x.p,0)}`;
-}
-async function orderNow(){
-  if(!audioCtx) audioCtx = new (window.AudioContext||window.webkitAudioContext)();
-  const f = Object.keys(selCells)[0];
-  const items = selCells[f], date = $('mxDate').value;
-  if(!confirm(`${date} ${f}\n` + items.map(x=>`  ${x.t.replace('--','-')} ¥${x.p}`).join('\n')
-    + `\n合计 ¥${items.reduce((a,x)=>a+x.p,0)}\n\n真实下单?(不付款6分钟自动取消,想留就尽快微信付款)`)) return;
-  const r = await fetch('/api/order',{method:'POST',headers:{'Content-Type':'application/json'},
-    body:JSON.stringify({date, skus:items.map(x=>x.sku)})});
-  const j = await r.json();
-  if(j.ok){ showWin(j.result); loadMatrix(date); }
-  else alert(j.error||'下单失败');
 }
 
+// ---------- 开抢 / 取证 ----------
+function getFields(){
+  return [0,1,2,3].map(i=>{
+    const el = $('fld'+i);
+    return el? el.value : null;
+  }).filter(v=>v!==null);
+}
 async function startSnipe(){
   if(!audioCtx) audioCtx = new (window.AudioContext||window.webkitAudioContext)();
-  if(!targetInfo) return alert('先检测 token');
-  const accs = getAccounts();
-  if(!confirm(`自动目标:${targetInfo.target_week} ${targetInfo.target}(9点放场)\n`
-    + `主号: ${accs[0].hours} ${accs[0].field==='any'?'随机':accs[0].field+'优先'}`
-    + '\n\n开始抢?(到点自动下单,响铃后6分钟内付款)')) return;
+  if(!healthInfo) return alert('先贴 token 检测');
+  const date = $('tDate').value;
+  const fields = getFields();
+  const dtxt = date==='auto'
+    ? `${healthInfo.target_week||''} ${healthInfo.target||'?'}(自动)`
+    : date;
+  if(!confirm(`目标:${dtxt} 早上 9-12 滑窗\n`
+    + `绑定:${fields.map((f,i)=>`${i==0?'主号':i==1?'小号':'号'+(i+1)}→${f}`).join(', ')}\n\n`
+    + '开始抢?(放场前几分钟点即可,到点自动下单,响铃后各号6分钟内付款)')) return;
   const r = await fetch('/api/snipe',{method:'POST',headers:{'Content-Type':'application/json'},
-    body:JSON.stringify({accounts:accs})});
+    body:JSON.stringify({date, fields})});
   const j = await r.json();
+  if(j.error) alert(j.error);
+}
+async function startObserve(){
+  if(!audioCtx) audioCtx = new (window.AudioContext||window.webkitAudioContext)();
+  if(!confirm('取证观察:等到 9 点放场,之后 2 分钟只探测快照、不下单。\n现在开始?')) return;
+  const j = await (await fetch('/api/observe',{method:'POST'})).json();
   if(j.error) alert(j.error);
 }
 async function stopSnipe(){ await fetch('/api/stop',{method:'POST'}); }
 
+// ---------- 测试下单 ----------
+async function orderNow(){
+  const q = {date:$('oDate').value, field:$('oField').value,
+             start:$('oStart').value, end:$('oEnd').value, acc:+$('oAcc').value};
+  if(!q.date||!q.field) return alert('填齐日期和场地');
+  if(!confirm(`${q.date} ${q.field} ${q.start}-${q.end} (${q.acc==0?'主号':'小号'})\n\n真实下单?(不付款6分钟自动取消)`)) return;
+  const j = await (await fetch('/api/order',{method:'POST',
+    headers:{'Content-Type':'application/json'},body:JSON.stringify(q)})).json();
+  if(j.ok){ showWin(j.result); }
+  else alert(j.error||'下单失败');
+}
+
 // ---------- 状态轮询 ----------
-function fmtClock(ts){const d=new Date(ts*1000);return d.toTimeString().slice(0,8)}
+function fmtClock(ts){return new Date(ts*1000).toTimeString().slice(0,8)}
 async function tick(){
   try{
     const s = await (await fetch('/api/state')).json();
     const ph = $('phase');
     ph.className='badge '+s.phase; ph.textContent=PHASE_TXT[s.phase]||s.phase;
-    $('btnStop').disabled = ['idle','success','failed','stopped'].includes(s.phase);
-    $('btnStart').disabled = !['idle','success','failed','stopped'].includes(s.phase);
+    const idle = ['idle','success','failed','stopped'].includes(s.phase);
+    $('btnStop').disabled = idle;
+    $('btnStart').disabled = !idle;
     $('serverTime').textContent = '服务器 ' + fmtClock(s.server_now);
+    $('alarm').style.display = s.alarm? '':'none';
+    if(s.alarm) $('alarm').textContent = '⚠ ' + s.alarm;
     if(s.phase==='waiting' && s.trigger_at){
       const left = s.trigger_at - s.server_now;
       const h=Math.floor(left/3600), m=Math.floor(left%3600/60), sec=Math.floor(left%60);
@@ -267,7 +248,8 @@ async function tick(){
     const lg = $('log');
     const txt = s.log.map(l=>`[${l.t}] ${l.m}`).join('\n');
     if(lg.textContent!==txt){ lg.textContent=txt; lg.scrollTop=lg.scrollHeight; }
-    if(s.phase==='success' && s.result && $('overlay').style.display!=='flex') showWin(s.result);
+    if(s.phase==='success' && s.result && s.result.orders
+       && $('overlay').style.display!=='flex') showWin(s.result);
   }catch(e){}
   setTimeout(tick,1000);
 }
@@ -288,7 +270,12 @@ function showWin(r){
 }
 function dismiss(){ $('overlay').style.display='none'; if(beepTimer)clearInterval(beepTimer); }
 
-initAcc(0, '09:00', '12:00', 'any');   // 9-12 一单(2免费+1付费;被拒自动降级9-11)
+// ---------- init ----------
+addTokRow(); addTokRow();                    // 默认主号+小号
+$('oField').innerHTML = [...Array(12)].map((_,i)=>`<option>${i+1}#</option>`).join('');
+$('oStart').innerHTML = hourOpts(9,21); $('oStart').value='12:00';
+$('oEnd').innerHTML = hourOpts(10,22); $('oEnd').value='13:00';
+$('oDate').value = new Date(Date.now()+2*864e5).toISOString().slice(0,10);
 health();
 tick();
 </script>
