@@ -146,6 +146,55 @@ def match_all(wants, matrix):
             yield want, field, slots
 
 
+# ---------------------------------------------------------------- 盲抢(周末场)
+
+WEEKS = ["周一", "周二", "周三", "周四", "周五", "周六", "周日"]
+
+
+def next_snipe_day(now=None):
+    """最近的"有周末场可抢"的放场日:该日+2 是周六/周日且该日 9 点未过。
+    周四 9 点放周六、周五 9 点放周日;错过当天 9 点自动顺延到下一个放场日。
+    返回 (snipe_day: datetime, target_date: str, 周几),无(8天内无)返回 (None, None, None)。"""
+    now = now or datetime.now()
+    for i in range(8):
+        d = (now + timedelta(days=i)).replace(hour=9, minute=0, second=0, microsecond=0)
+        t = d + timedelta(days=2)
+        if t.weekday() >= 5 and now < d:
+            return d, t.strftime("%Y-%m-%d"), WEEKS[t.weekday()]
+    return None, None, None
+
+
+def windows(hours, matrix, fields=None):
+    """盲抢滑窗:在 hours 区间内按 (最早开始 → 场地序 → 同起点长段优先) 产出
+    所有"整段全部可订"的连续段,区间尾段可向后延 1 小时(9-12 实际可中 11-13)。
+    常态下 9-11 是 0 元锁格,首个命中即 11:00-13:00;若取证发现 9-11 有窗口,
+    同一逻辑天然会抢到最早段。yield (field, slots, "11:00-13:00")。"""
+    a, b = hours.split("-")
+    ha, hb = int(a[:2]), int(b[:2])
+    lo, hi = ha, min(hb + 1, 22)
+    pool = fields or matrix["fields"]
+    for s in range(lo, hi):
+        for field in pool:
+            for e in range(hi, s, -1):
+                ts = [f"{h:02d}:00--{h + 1:02d}:00" for h in range(s, e)]
+                slots = [matrix["slots"].get((field, t)) for t in ts]
+                if all(x is not None and Wesais.bookable(x) for x in slots):
+                    yield field, slots, f"{s:02d}:00-{e:02d}:00"
+
+
+def with_retry(fn, tries=3, delay=0.4, what="请求"):
+    """网络层异常重试(code!=200 的业务失败不适用)。"""
+    last = None
+    for i in range(tries):
+        try:
+            return fn()
+        except Exception as ex:
+            last = ex
+            if i < tries - 1:
+                time.sleep(delay)
+    raise RuntimeError(f"{what}连续{tries}次失败: {last}")
+
+
 # ---------------------------------------------------------------- 输出辅助
 
 def print_matrix(matrix, date):
@@ -234,7 +283,19 @@ def cmd_check(cfg):
 
 def cmd_snipe(cfg):
     wx = Wesais(cfg)
-    date = cfg["mission"]["date"]
+    want = (cfg.get("mission") or {}).get("wants", [{}])[0]
+    hours = want.get("hours", "09:00-12:00")
+    fields = want.get("fields") or None
+    snipe.expand_hours(hours)  # 区间合法性前置校验
+    # 目标日期:mission.date 指定 > 自动推导下一个周末放场日
+    date = (cfg.get("mission") or {}).get("date")
+    if not date:
+        day, date, week = next_snipe_day()
+        if not date:
+            fail("今天起 8 天内没有周末场放场日(只有周四 9 点放周六、周五 9 点放周日),"
+                 "或手动在 config.json 的 mission.date 指定日期")
+        print(f"[目标] {week} {date}(今天 {(datetime.now() + timedelta(days=2)).strftime('%m-%d')}"
+              f" +2 天规则自动推导)")
     sc = cfg.get("snipe", {})
     publish_h = sc.get("publish_hour", 9)
     fast_ms = sc.get("fast_interval_ms", 350)
@@ -243,20 +304,22 @@ def cmd_snipe(cfg):
     max_min = sc.get("max_minutes", 5)
 
     print(f"[1/3] 验 token...", end=" ")
-    wx.date_list()
+    with_retry(wx.date_list, what="验token")
     print("OK")
 
     if date in wx.date_list():
         print(f"[!] {date} 已在放场列表里(可能已放场),直接进入匹配")
     else:
-        # 等到 8:59:55(按服务器时间)再开始密集轮询;过了放场点就直接开轮
-        server = wx.server_time()
+        # 等到放场日 8:59:55(按服务器时间)再开始密集轮询;过了放场点就直接开轮
+        server = with_retry(wx.server_time, what="对时")
         offset = server - time.time()
         now = datetime.fromtimestamp(server)
-        trig = now.replace(hour=publish_h, minute=0, second=0, microsecond=0)
+        pub_day = datetime.strptime(date, "%Y-%m-%d") - timedelta(days=2)
+        trig = pub_day.replace(hour=publish_h, minute=0, second=0, microsecond=0)
         if now < trig:
             target_epoch = server + (trig - now).total_seconds() - 5
-            print(f"[2/3] 服务器时间 {now:%H:%M:%S},等到 {publish_h - 1}:59:55 开始轮询"
+            print(f"[2/3] 服务器时间 {now:%m-%d %H:%M:%S},{date} 由 {pub_day:%m-%d}"
+                  f" {publish_h}:00 放场,等到 {publish_h - 1}:59:55 开始轮询"
                   f"(约{(trig - now).total_seconds() / 60:.0f}分钟,期间别关窗口)")
             while True:
                 remain = target_epoch - (time.time() + offset)
@@ -269,7 +332,12 @@ def cmd_snipe(cfg):
         n = 0
         while True:
             n += 1
-            if date in wx.date_list():
+            try:
+                hit = date in wx.date_list()
+            except Exception as ex:
+                print(f"\n  探测异常({ex}),继续", flush=True)
+                hit = False
+            if hit:
                 print(f"\n[!!] {date} 放场了!第{n}次探测,耗时{time.time()+offset-t0:.1f}s")
                 break
             el = time.time() + offset - t0
@@ -281,8 +349,8 @@ def cmd_snipe(cfg):
                 time.sleep(fast_ms / 1000)
                 print(".", end="", flush=True)
 
-    # 放场后:拉矩阵按偏好下单(矩阵未就绪/全被抢则重拉,最多2分钟)
-    print("[3/3] 拉取场地矩阵并下单...", flush=True)
+    # 放场后:滑窗盲抢(最早连续可订段;被拒/被秒则换下一个,最多2分钟)
+    print("[3/3] 拉取场地矩阵滑窗下单...", flush=True)
     t0 = time.time()
     tried = set()
     while time.time() - t0 < 120:
@@ -292,12 +360,17 @@ def cmd_snipe(cfg):
             print(f"  矩阵未就绪({ex}),1s后重试")
             time.sleep(1)
             continue
-        for want, field, slots in match_all(cfg["mission"]["wants"], m):
+        for field, slots, hs in windows(hours, m, fields=fields):
             skus = tuple(s["sku"] for s in slots)
             if skus in tried:
                 continue
             tried.add(skus)
-            resp = wx.create_order(list(skus))
+            try:
+                resp = with_retry(lambda: wx.create_order(list(skus)),
+                                  tries=2, what="下单")
+            except Exception as ex:
+                print(f"  下单请求异常({hs} {field}): {ex},换下一个")
+                continue
             if resp.get("code") == 200:
                 try:
                     lst = resp["data"]["list"]
@@ -307,7 +380,7 @@ def cmd_snipe(cfg):
                 except (KeyError, TypeError):
                     print(f"  code=200但结构异常,按失败处理: {str(resp)[:200]}")
             else:
-                print(f"  下单失败({want['hours']} {field}): "
+                print(f"  下单失败({hs} {field}): "
                       f"{resp.get('message')} (code={resp.get('code')}),换下一个")
         print("  本轮无可订组合,0.8s后重拉矩阵...", flush=True)
         time.sleep(0.8)
@@ -336,6 +409,127 @@ def cmd_test_order(cfg, date, start_hour, n_hours, fields="any"):
     fail("没找到连续可订的场地做试验")
 
 
+# ---------------------------------------------------------------- 取证观察
+
+def observe(cfg, date=None, out_dir=None, after_seconds=120, log=print):
+    """放场取证(只探测不下单):等到 9 点放场,之后密集快照矩阵,diff 落盘
+    evidence/<日期>-observe.jsonl。回答核心问题:
+      9-11 的 0 元格是"放场即锁"(内部圈场,证据可交有关部门)
+                  还是"有过可订窗口"(拼手速,盲抢应纳入 0 元格)。
+    返回结论 dict。"""
+    wx = Wesais(cfg)
+    if not date:
+        date = (datetime.now() + timedelta(days=2)).strftime("%Y-%m-%d")
+    out = Path(out_dir) if out_dir else TOOL_DIR / "evidence"
+    out.mkdir(exist_ok=True)
+    fp = out / f"{date}-observe.jsonl"
+    sc = cfg.get("snipe", {})
+    publish_h = sc.get("publish_hour", 9)
+    max_min = sc.get("max_minutes", 5)
+
+    def emit(obj):
+        with fp.open("a", encoding="utf-8") as f:
+            f.write(json.dumps(obj, ensure_ascii=False) + "\n")
+
+    log(f"[取证] 目标 {date},观察放场瞬间矩阵,evidence 落盘 {fp.name}")
+    server = with_retry(wx.server_time, what="对时")
+    offset = server - time.time()
+    now = datetime.fromtimestamp(server)
+    if date in with_retry(wx.date_list, what="验token"):
+        log(f"[取证] {date} 已放场,直接快照现有状态(非放场瞬间)")
+    else:
+        pub_day = datetime.strptime(date, "%Y-%m-%d") - timedelta(days=2)
+        trig = pub_day.replace(hour=publish_h, minute=0, second=0, microsecond=0)
+        if now >= trig:
+            fail(f"{date} 未放场且放场时刻({pub_day:%m-%d} {publish_h}:00)已过,"
+                 f"取证要在放场前启动")
+        target_epoch = server + (trig - now).total_seconds() - 10  # 提前10s到位
+        log(f"[取证] 服务器时间 {now:%m-%d %H:%M:%S},等到 {pub_day:%m-%d}"
+            f" {publish_h - 1}:59:50 就位")
+        while True:
+            remain = target_epoch - (time.time() + offset)
+            if remain <= 0:
+                break
+            time.sleep(min(remain, 30))
+        t0 = time.time() + offset
+        n = 0
+        while True:
+            n += 1
+            try:
+                if date in wx.date_list():
+                    log(f"[取证] {date} 放场!第{n}次探测,耗时{time.time()+offset-t0:.1f}s")
+                    break
+            except Exception as ex:
+                log(f"[取证] 探测异常({ex}),继续")
+            if time.time() + offset - t0 > max_min * 60:
+                fail(f"{max_min}分钟内未见放场,取证中止(放场时间可能变了)")
+            time.sleep(0.35)
+
+    # 放场后密集快照:前 30s 每 0.5s,之后每 2s,diff 落盘
+    prev, t0 = None, time.time() + offset
+    bookable_since = {}   # (f,t) -> 首次可订时刻(0元格取证关键数据)
+    locked_at = {}        # (f,t) -> 从可订变锁的时刻(被抢时刻)
+    emit({"ts": t0, "kind": "start", "date": date})
+    while True:
+        el = time.time() + offset - t0
+        if el > after_seconds:
+            break
+        try:
+            m = wx.matrix(date)
+        except Exception as ex:
+            log(f"[取证] 矩阵未就绪({ex})")
+            time.sleep(0.3)
+            continue
+        cur = {}
+        for (f, t), s in m["slots"].items():
+            ok = Wesais.bookable(s)
+            cur[(f, t)] = {"ok": ok, "lock": s["is_lock"],
+                           "st": s["lock_status"], "p": s["price"]}
+            if ok:
+                bookable_since.setdefault((f, t), el)
+            elif (f, t) in bookable_since and (f, t) not in locked_at:
+                locked_at[(f, t)] = el
+        now_ts = time.time() + offset
+        if prev is None:
+            emit({"ts": now_ts, "el": round(el, 2), "kind": "full",
+                  "slots": {f"{f}|{t}": v for (f, t), v in cur.items()}})
+        else:
+            diff = {f"{f}|{t}": v for (f, t), v in cur.items() if prev.get((f, t)) != v}
+            if diff:
+                emit({"ts": now_ts, "el": round(el, 2), "kind": "diff",
+                      "changes": diff})
+        prev = cur
+        time.sleep(0.5 if el < 30 else 2.0)
+
+    # 分析:9-11(0元格)是否曾可订;11-12 秒杀进度
+    morning = [k for k in (prev or {}) if k[1].startswith(("09:00", "10:00"))]
+    opened = [k for k in morning if k in bookable_since]
+    eleven = [k for k in (prev or {}) if k[1].startswith("11:00")]
+    eleven_left = sum(1 for k in eleven if (prev or {}).get(k, {}).get("ok"))
+    conclusion = {
+        "date": date, "kind": "summary",
+        "morning_slots": len(morning), "morning_ever_bookable": len(opened),
+        "verdict": "放场即锁(从未可订)→ 疑似内部圈场,证据在此"
+        if morning and not opened else
+        (f"曾有{len(opened)}个0元格可订,窗口见 locked_at"
+         if opened else "无9-11槽数据"),
+        "eleven_left_after": eleven_left,
+    }
+    if opened:
+        conclusion["windows"] = [
+            {"slot": f"{f}|{t}", "opened_at": round(bookable_since[(f, t)], 1),
+             "locked_at": round(locked_at[(f, t)], 1) if (f, t) in locked_at else None}
+            for f, t in sorted(opened)]
+    emit(dict(ts=time.time() + offset, **conclusion))
+    log(f"[取证] 结论: {conclusion['verdict']};11-12格剩余可订 {eleven_left}/{len(eleven)}")
+    log(f"[取证] 证据文件: {fp}")
+    return conclusion
+
+
+def cmd_observe(cfg):
+    observe(cfg)
+
+
 def main():
     if len(sys.argv) < 2 or sys.argv[1] in ("-h", "--help"):
         print(__doc__)
@@ -349,7 +543,7 @@ def main():
         cmd_test_order(load_config(), sys.argv[2], int(sys.argv[3]), int(sys.argv[4]), fields)
         return
     cfg = load_config()
-    {"check": cmd_check, "snipe": cmd_snipe}[cmd](cfg)
+    {"check": cmd_check, "snipe": cmd_snipe, "observe": cmd_observe}[cmd](cfg)
 
 
 if __name__ == "__main__":

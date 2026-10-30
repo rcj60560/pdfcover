@@ -1,3 +1,5 @@
 config.json
 *.har
 __pycache__/
+evidence/
+logs/
