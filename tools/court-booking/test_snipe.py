@@ -144,6 +144,23 @@ def test_windows_weekday_morning_all_free_price():
     print("[OK] windows: 工作日白天全0元 → 9-12窗口为空")
 
 
+def test_zone_summary():
+    """态势分桶:有价可订/0元未锁(假窗)/0元已锁/有价已占——抢场即取证"""
+    slots = {}
+    # 1#: 9点0元未锁(假窗) 10点0元已锁 11点有价可订;2#: 11点有价已占
+    slots[("1#", "09:00--10:00")] = mk_slot("1#", "09:00--10:00", price="0.00")
+    slots[("1#", "10:00--11:00")] = mk_slot("1#", "10:00--11:00", price="0.00", lock=True)
+    slots[("1#", "11:00--12:00")] = mk_slot("1#", "11:00--12:00")
+    taken = mk_slot("2#", "11:00--12:00")
+    taken["lock_status"] = 206
+    slots[("2#", "11:00--12:00")] = taken
+    m = {"fields": ["1#", "2#"], "slots": slots}
+    s = snipe.zone_summary("09:00-12:00", m)
+    assert "有价可订1[1#11点]" in s and "0元未锁1" in s and "0元已锁1" in s \
+        and "有价已占1" in s, f"分桶错误: {s}"
+    print("[OK] zone_summary: 四桶计数正确")
+
+
 def test_windows_field_pref():
     """指定场地偏好:只扫 2#"""
     locked = {("1#", "09:00--10:00"), ("1#", "10:00--11:00"),
@@ -176,5 +193,6 @@ if __name__ == "__main__":
     test_bookable_zero_price_fake_window()
     test_windows_zero_fake_window_anchors_paid()
     test_windows_weekday_morning_all_free_price()
+    test_zone_summary()
     test_expand_hours()
     print("\n全部通过 ✓")

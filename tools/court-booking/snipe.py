@@ -149,6 +149,31 @@ def match_all(wants, matrix):
             yield want, field, slots
 
 
+def zone_summary(hours, matrix):
+    """目标时段态势一览(抢场即取证):每轮矩阵对窗口内格子分桶计数。
+    有价可订=真机会;0元未锁=假窗口(下单必拒,2026-11-02实锤);0元已锁=圈场终态;
+    有价已占=放出但被人订走。返回一行摘要,web 盲抢循环里"变化才打"即成时间线。"""
+    opens, free_open, free_lock, taken = [], 0, 0, 0
+    for f in matrix["fields"]:
+        for t in expand_hours(hours):
+            s = matrix["slots"].get((f, t))
+            if s is None:
+                continue
+            if s["price"] == "0.00":
+                if s["is_lock"] or s["lock_status"]:
+                    free_lock += 1
+                else:
+                    free_open += 1
+            elif Wesais.bookable(s):
+                opens.append(f"{f}{t[:2]}点")
+            else:
+                taken += 1
+    head = (f"有价可订{len(opens)}"
+            f"[{','.join(opens[:6])}{'…' if len(opens) > 6 else ''}] "
+            f"0元未锁{free_open} 0元已锁{free_lock} 有价已占{taken}")
+    return head
+
+
 # ---------------------------------------------------------------- 盲抢(周末场)
 
 WEEKS = ["周一", "周二", "周三", "周四", "周五", "周六", "周日"]

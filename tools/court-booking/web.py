@@ -387,6 +387,7 @@ def worker(cfg, date, accs, hours):
         # 滑窗盲抢:每号独立取最早连续可订段;被拒/被秒换下一个,120s 上限
         t0, done, tried = time.time(), {}, set()
         pending = [a for a in accs if a["name"] in clients]
+        last_zone = None  # 目标区态势时间线(抢场即取证):变化才打一行
         while time.time() - t0 < 120 and pending and not STOP.is_set():
             try:
                 m = wx0.matrix(date)
@@ -394,6 +395,10 @@ def worker(cfg, date, accs, hours):
                 log(f"矩阵未就绪({ex}),1s后重试")
                 STOP.wait(1)
                 continue
+            zone = snipe.zone_summary(hours, m)
+            if zone != last_zone:
+                log(f"目标区[{hours}]: {zone}")
+                last_zone = zone
             for acc in list(pending):
                 # 一号一场地:绑定场地只扫该场,"any"=全场地扫最早可订
                 pool = [acc["field"]] if acc.get("field", "any") != "any" else None
@@ -426,9 +431,9 @@ def worker(cfg, date, accs, hours):
                         except (KeyError, TypeError):
                             log(f"{acc['name']} code=200但结构异常: {str(resp)[:120]}")
                     else:
-                        log(f"{acc['name']} 下单失败({hs} {field}): "
-                            f"{resp.get('message') or '(服务端无message)'} "
-                            f"(code={resp.get('code')}),换下一个")
+                        log(f"{acc['name']} 下单失败({hs} {field}): code={resp.get('code')} "
+                            f"msg={resp.get('message') or '(空)'} "
+                            f"resp={str(resp)[:120]},换下一个")
             if pending:
                 log("本轮未全成,0.8s后重拉矩阵")
                 STOP.wait(0.8)
