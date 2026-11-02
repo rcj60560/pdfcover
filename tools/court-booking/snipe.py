@@ -108,7 +108,10 @@ class Wesais:
 
     @staticmethod
     def bookable(slot):
-        return (not slot["is_lock"] and slot["lock_status"] == 0
+        # price=="0.00"=内部圈场格(周末9-11/工作日白天9-14):放场首帧is_lock常为false的假窗口,
+        # 下单必被拒(2026-11-02周三28连拒实锤,服务端message为空),几分钟后转锁——一律不可订
+        return (slot["price"] != "0.00"
+                and not slot["is_lock"] and slot["lock_status"] == 0
                 and not slot["is_overdue"])
 
 

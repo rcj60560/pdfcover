@@ -427,7 +427,8 @@ def worker(cfg, date, accs, hours):
                             log(f"{acc['name']} code=200但结构异常: {str(resp)[:120]}")
                     else:
                         log(f"{acc['name']} 下单失败({hs} {field}): "
-                            f"{resp.get('message')},换下一个")
+                            f"{resp.get('message') or '(服务端无message)'} "
+                            f"(code={resp.get('code')}),换下一个")
             if pending:
                 log("本轮未全成,0.8s后重拉矩阵")
                 STOP.wait(0.8)

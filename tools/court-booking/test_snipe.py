@@ -102,6 +102,48 @@ def test_windows_all_locked():
     print("[OK] windows: 全锁返回空")
 
 
+# ---------------------------------------------------------------- 0元格=内部圈场
+# 2026-11-02 周三实战实锤:工作日白天9-14也是0元格(15点起36元);放场首帧 is_lock=false
+# 是假窗口,下单28连拒(服务端message为空),数分钟后转锁。bookable 必须排除0元格,
+# 否则滑窗在必败格上锚定,耗尽时间窗(当日事故根因)。
+
+def test_bookable_zero_price_fake_window():
+    """0元格即使 is_lock=false/lock_status=0(假窗口)也不可订"""
+    s = mk_slot("1#", "09:00--10:00", price="0.00", lock=False)
+    assert snipe.Wesais.bookable(s) is False, "0元假窗口必须判不可订"
+    assert snipe.Wesais.bookable(mk_slot("1#", "15:00--16:00")) is True
+    print("[OK] bookable: 0元假窗口拒,有价格可订")
+
+
+def test_windows_zero_fake_window_anchors_paid():
+    """9点格是0元假窗、11点起有价 → 绝不在9点锚定,首选 11:00-13:00(当日事故场景)"""
+    slots = {}
+    for f in ("1#", "2#"):
+        for h in range(9, 14):
+            t = f"{h:02d}:00--{h + 1:02d}:00"
+            fake = h <= 10  # 9-10点 = 0元假窗(未锁但0元);11点起有价可订
+            slots[(f, t)] = mk_slot(f, t, price="0.00" if fake else "36.00")
+    m = {"fields": ["1#", "2#"], "slots": slots}
+    got = list(snipe.windows("09:00-12:00", m))
+    assert got, "11点起有价,应有候选"
+    first_f, first_slots, _ = got[0]
+    assert hours_of(first_slots) == "11:00-13:00", \
+        f"应锚定11点,实际 {first_f} {hours_of(first_slots)}"
+    print("[OK] windows: 0元假窗跳过,锚定首个有价段")
+
+
+def test_windows_weekday_morning_all_free_price():
+    """工作日白天全0元(9-14圈场)→ 9-12 窗口内无任何候选(想抢得改15点后窗口)"""
+    slots = {}
+    for f in ("1#", "2#"):
+        for h in range(9, 14):
+            t = f"{h:02d}:00--{h + 1:02d}:00"
+            slots[(f, t)] = mk_slot(f, t, price="0.00")
+    m = {"fields": ["1#", "2#"], "slots": slots}
+    assert list(snipe.windows("09:00-12:00", m)) == [], "全0元应无候选"
+    print("[OK] windows: 工作日白天全0元 → 9-12窗口为空")
+
+
 def test_windows_field_pref():
     """指定场地偏好:只扫 2#"""
     locked = {("1#", "09:00--10:00"), ("1#", "10:00--11:00"),
@@ -131,5 +173,8 @@ if __name__ == "__main__":
     test_windows_free_slots_open()
     test_windows_all_locked()
     test_windows_field_pref()
+    test_bookable_zero_price_fake_window()
+    test_windows_zero_fake_window_anchors_paid()
+    test_windows_weekday_morning_all_free_price()
     test_expand_hours()
     print("\n全部通过 ✓")
