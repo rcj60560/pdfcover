@@ -7,7 +7,7 @@ import re
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Iterable, Sequence
-from urllib.parse import urlparse
+from urllib.parse import parse_qs, urlparse
 
 
 _TIMECODE_RE = re.compile(
@@ -94,7 +94,18 @@ def normalize_bilibili_url(value: str) -> str:
         raise ValueError("请输入 bilibili.com / b23.tv 视频链接，或直接输入 BV 号")
     if host.endswith("bilibili.com") and "/video/" not in parsed.path.lower():
         raise ValueError("当前只支持 B 站视频页链接（路径中应包含 /video/）")
-    return raw
+    if host.endswith("b23.tv"):
+        return raw  # 短链保持原样,后续由 yt-dlp 解析重定向
+    # bilibili.com /video/ 页只保留 BV/av 号与 p 选集参数,剥离 spm/vd_source 等跟踪参数,
+    # 让同视频同分P的手动链接/批量链接/分享链接归一成同一个转写缓存键
+    match = re.search(r"(?i)(BV[0-9A-Za-z]{8,14}|av\d{1,15})", parsed.path)
+    if not match:
+        return raw
+    video_id = match.group(1).lower() if match.group(1)[:2].lower() == "av" else match.group(1)
+    page = (parse_qs(parsed.query).get("p") or [""])[0]
+    if page.isdigit():
+        return f"https://www.bilibili.com/video/{video_id}?p={page}"
+    return f"https://www.bilibili.com/video/{video_id}"
 
 
 def _clean_text(value: str, *, keep_newlines: bool = True) -> str:

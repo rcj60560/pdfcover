@@ -47,6 +47,17 @@ def test_normalize_bilibili_url_accepts_video_short_and_bv():
     assert core.normalize_bilibili_url("BV1gK4y1o7Ni?p=4") == "https://www.bilibili.com/video/BV1gK4y1o7Ni?p=4"
 
 
+def test_normalize_bilibili_url_strips_junk_params_for_cache_stability():
+    # 垃圾参数剥离:缓存键稳定性(同视频同p不同来源URL必须归一成同一键)
+    junk = "https://www.bilibili.com/video/BV1gK4y1o7Ni/?spm_id_from=333.788.videopod.episodes&vd_source=abc&p=6"
+    assert core.normalize_bilibili_url(junk) == "https://www.bilibili.com/video/BV1gK4y1o7Ni?p=6"
+    assert core.normalize_bilibili_url("https://www.bilibili.com/video/BV1gK4y1o7Ni?p=7&foo=1") == "https://www.bilibili.com/video/BV1gK4y1o7Ni?p=7"
+    assert core.normalize_bilibili_url("https://www.bilibili.com/video/BV1gK4y1o7Ni/?p=8") == "https://www.bilibili.com/video/BV1gK4y1o7Ni?p=8"
+    assert core.normalize_bilibili_url("https://www.bilibili.com/video/BV1gK4y1o7Ni/") == "https://www.bilibili.com/video/BV1gK4y1o7Ni"
+    # 短链保持原样(后续由 yt-dlp 解析)
+    assert core.normalize_bilibili_url("https://b23.tv/abc123") == "https://b23.tv/abc123"
+
+
 def test_split_english_segments_cuts_at_row_bounds_under_limit():
     import app as app_module
     from types import SimpleNamespace
