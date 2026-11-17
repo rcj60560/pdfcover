@@ -412,3 +412,171 @@ $("apply-align").addEventListener("click", applyAlignedResult);
 $("to-top").addEventListener("click", () => $("reader").scrollIntoView({ behavior: "smooth" }));
 restoreForm();
 loadServerStarted();
+
+// ---- 批量模式 ----
+const batchState = { episodes: [], batchId: "", timer: null };
+
+function batchStatusBadge(status) {
+  return { queued: "⏳ 排队", running: "🔄 进行中", done: "✅ 完成", failed: "❌ 失败" }[status] || status;
+}
+
+async function listBatchEpisodes() {
+  const url = $("batch-url").value.trim();
+  if (!url) return;
+  const btn = $("batch-list-btn");
+  setBusy(btn, true, "枚举中…", "列出集数");
+  try {
+    const data = await api("/api/batch/list", { url });
+    batchState.episodes = data.items;
+    const list = $("batch-episode-list");
+    list.replaceChildren();
+    data.items.forEach((ep) => {
+      const row = document.createElement("label");
+      row.className = "batch-episode";
+      row.innerHTML = `<input type="checkbox" data-p="${ep.p}">` +
+        `<span class="p">p${ep.p}</span><span class="t" title="${ep.title}">${ep.title}</span>` +
+        `<span class="d">${Math.round(ep.duration / 60)} 分钟</span>`;
+      list.append(row);
+    });
+    $("batch-episodes").hidden = false;
+  } catch (error) {
+    setStatus(error.message, "error");
+  } finally { setBusy(btn, false, "", "列出集数"); }
+}
+
+function checkedBatchPs() {
+  return [...document.querySelectorAll("#batch-episode-list input:checked")]
+    .map((el) => Number(el.dataset.p));
+}
+
+function setBatchChecked(ps) {
+  const want = new Set(ps);
+  document.querySelectorAll("#batch-episode-list input").forEach((el) => {
+    el.checked = want.has(Number(el.dataset.p));
+  });
+}
+
+async function startBatch() {
+  const ps = checkedBatchPs();
+  if (!ps.length) { setStatus("先勾选要拉取的集数", "error"); return; }
+  const totalMin = batchState.episodes
+    .filter((ep) => ps.includes(ep.p))
+    .reduce((sum, ep) => sum + ep.duration / 4 + Number($("batch-interval").value || 60), 0) / 60;
+  if (ps.length > 30 &&
+      !window.confirm(`选中 ${ps.length} 集，预计约 ${Math.round(totalMin)} 分钟（挂机慢跑，可随时停服务暂停）。继续？`)) return;
+  const url = $("batch-url").value.trim();
+  try {
+    const data = await api("/api/batch/start", {
+      url, ps, interval: Number($("batch-interval").value || 60),
+    });
+    batchState.batchId = data.batch_id;
+    $("batch-episodes").hidden = true;
+    $("batch-run").hidden = false;
+    pollBatch();
+  } catch (error) { setStatus(error.message, "error"); }
+}
+
+function pollBatch() {
+  if (batchState.timer) window.clearTimeout(batchState.timer);
+  fetch(`/api/batch/${batchState.batchId}`)
+    .then((r) => r.json())
+    .then((data) => {
+      if (!data.ok) return;
+      renderBatch(data.batch);
+      const unfinished = data.batch.items.filter((i) => i.status === "queued" || i.status === "running").length;
+      if (unfinished > 0 || data.batch.state === "running") {
+        batchState.timer = window.setTimeout(pollBatch, 3000);
+      }
+    })
+    .catch(() => { batchState.timer = window.setTimeout(pollBatch, 5000); });
+}
+
+function renderBatch(batch) {
+  const done = batch.items.filter((i) => i.status === "done").length;
+  $("batch-progress-text").textContent =
+    `${batch.title} —— ${done}/${batch.items.length} 完成` +
+    (batch.items.some((i) => i.status === "failed") ? `，${batch.items.filter((i) => i.status === "failed").length} 失败` : "");
+  $("batch-progress-fill").style.width = `${(done / batch.items.length) * 100}%`;
+  const tbody = $("batch-tbody");
+  tbody.replaceChildren();
+  batch.items.forEach((item) => {
+    const tr = document.createElement("tr");
+    const ops = [];
+    if (item.status === "done") {
+      ops.push(`<a href="javascript:void(0)" onclick="openBatchJob('${item.job_id}')">去处理</a>`);
+    } else if (item.status === "failed") {
+      ops.push(`<button onclick="retryBatchItem(${item.p})">重试</button>`);
+    }
+    tr.innerHTML = `<td>p${item.p}</td><td title="${item.title}">${item.title.slice(0, 40)}</td>` +
+      `<td class="st st-${item.status}">${batchStatusBadge(item.status)}</td>` +
+      `<td class="op">${ops.join(" ")}</td>`;
+    tbody.append(tr);
+  });
+}
+
+async function retryBatchItem(p) {
+  try { await api(`/api/batch/${batchState.batchId}/retry`, { p }); pollBatch(); }
+  catch (error) { setStatus(error.message, "error"); }
+}
+
+async function openBatchJob(jobId) {
+  state.jobId = jobId;
+  const response = await fetch(`/api/jobs/${jobId}/transcribe/status`);
+  const payload = await response.json();
+  if (!payload.ok) { setStatus(payload.error || "任务已过期", "error"); return; }
+  renderRows({ rows: payload.rows || [], count: (payload.rows || []).length, notice: "" });
+}
+
+async function loadSavedBatches() {
+  try {
+    const response = await fetch("/api/batch/list");
+    const data = await response.json();
+    const wrap = $("batch-saved");
+    wrap.replaceChildren();
+    const batches = data.batches || [];
+    $("batch-saved-wrap").hidden = !batches.length;
+    batches.forEach((b) => {
+      const row = document.createElement("div");
+      row.className = "batch-saved-item";
+      const resume = b.resumable
+        ? `<button onclick="resumeBatch('${b.batch_id}')">恢复</button>` : "";
+      const view = b.state === "running" || b.done
+        ? `<a href="javascript:void(0)" onclick="viewBatch('${b.batch_id}')">查看</a>` : "";
+      row.innerHTML = `<b>${b.title.slice(0, 26)}</b><span>${b.done}/${b.total} · ` +
+        `${b.state === "finished" ? "已完成" : "未完成"}</span>${view}${resume}`;
+      wrap.append(row);
+    });
+  } catch { /* 静默 */ }
+}
+
+async function resumeBatch(batchId) {
+  try { await api(`/api/batch/${batchId}/resume`, {}); viewBatch(batchId); }
+  catch (error) { setStatus(error.message, "error"); }
+}
+
+async function viewBatch(batchId) {
+  batchState.batchId = batchId;
+  $("batch-episodes").hidden = true;
+  $("batch-run").hidden = false;
+  pollBatch();
+}
+
+$("batch-list-btn").addEventListener("click", listBatchEpisodes);
+$("batch-select-all").addEventListener("click", () =>
+  setBatchChecked(batchState.episodes.map((ep) => ep.p)));
+$("batch-clear").addEventListener("click", () => setBatchChecked([]));
+$("batch-range-btn").addEventListener("click", () => {
+  // 范围解析在前端复刻 batch_core.parse_ps 语义：1-10,15 → 勾选这些集
+  const available = batchState.episodes.length;
+  const want = new Set();
+  for (const token of $("batch-range").value.split(",")) {
+    const m = token.trim().match(/^(\d+)\s*-\s*(\d+)$|^(\d+)$/);
+    if (!m) continue;
+    if (m[3]) want.add(Number(m[3]));
+    else { const [a, b] = [Number(m[1]), Number(m[2])].sort((x, y) => x - y);
+      for (let p = a; p <= b; p++) want.add(p); }
+  }
+  setBatchChecked([...want].filter((p) => p >= 1 && p <= available));
+});
+$("batch-start").addEventListener("click", startBatch);
+loadSavedBatches();

@@ -75,6 +75,40 @@
       </div>
     </section>
 
+    <details id="batch-panel" class="panel batch-panel">
+      <summary>📦 批量模式 —— 合集勾选，批量拉英文（挂着慢慢跑）</summary>
+      <div class="batch-idle">
+        <div class="url-row">
+          <input id="batch-url" placeholder="贴合集链接或 BV 号，如 BV1gK4y1o7Ni">
+          <button id="batch-list-btn" class="primary" type="button">列出集数</button>
+        </div>
+      </div>
+      <div id="batch-episodes" hidden>
+        <div class="batch-tools">
+          <button id="batch-select-all" type="button">全选</button>
+          <button id="batch-clear" type="button">清空</button>
+          <input id="batch-range" placeholder="范围，如 1-10,15">
+          <button id="batch-range-btn" type="button">按范围勾选</button>
+          <label class="batch-interval">集间隔
+            <input id="batch-interval" type="number" value="60" min="10" max="600"> 秒
+          </label>
+          <button id="batch-start" class="primary" type="button">开始批量</button>
+        </div>
+        <div id="batch-episode-list" class="batch-episode-list"></div>
+      </div>
+      <div id="batch-run" hidden>
+        <div class="batch-progress">
+          <div id="batch-progress-text" class="batch-progress-text"></div>
+          <div class="batch-bar"><div id="batch-progress-fill" class="batch-bar-fill"></div></div>
+        </div>
+        <table class="batch-table"><tbody id="batch-tbody"></tbody></table>
+      </div>
+      <div id="batch-saved-wrap" hidden>
+        <h3 class="batch-saved-title">已有批次</h3>
+        <div id="batch-saved"></div>
+      </div>
+    </details>
+
     <section id="reader" class="reader" aria-labelledby="reader-title" hidden>
       <div class="reader-head">
         <div>
