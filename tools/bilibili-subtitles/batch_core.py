@@ -126,3 +126,40 @@ def load_batches(directory: Path) -> list[Batch]:
         except (OSError, ValueError, TypeError, KeyError):
             continue  # 坏文件跳过,不拖垮整个启动加载
     return out
+
+
+MAX_ATTEMPTS = 3
+
+
+def run_batch(batch: Batch, *, pipeline, job_factory, sleep, on_persist) -> None:
+    """顺序队列状态机。pipeline/job_factory/sleep/on_persist 全注入,离线可测。
+
+    单集:running→pipeline 成功→job_factory→done;失败 attempts<3→退避后重试当前集;
+    3 次→failed 跳过继续。集间(非最后一集)sleep(interval_sec)。全部结束 state=finished。
+    """
+    pending = [item for item in batch.items if item.status == "queued"]
+    for index, item in enumerate(pending):
+        is_last = index == len(pending) - 1
+        while True:
+            item.status, item.error = "running", ""
+            on_persist(batch)
+            try:
+                result = pipeline(f"{batch.source_url}?p={item.p}")
+                item.job_id = job_factory(item, result)
+                item.status = "done"
+                on_persist(batch)
+                break
+            except Exception as exc:  # noqa: BLE001 - 队列层兜住一切单集失败
+                item.attempts += 1
+                item.error = str(exc) or exc.__class__.__name__
+                if item.attempts >= MAX_ATTEMPTS:
+                    item.status = "failed"
+                    on_persist(batch)
+                    break
+                item.status = "queued"
+                on_persist(batch)
+                sleep(backoff_seconds(item.attempts))
+        if not is_last:
+            sleep(batch.interval_sec)
+    batch.state = "finished"
+    on_persist(batch)

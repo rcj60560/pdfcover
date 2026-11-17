@@ -105,3 +105,84 @@ def test_load_batches_skips_corrupt_files(tmp_path):
     batch_core.save_batch(good, tmp_path)
     loaded = batch_core.load_batches(tmp_path)
     assert [b.batch_id for b in loaded] == ["cd34"]
+
+
+class FakeClock:
+    def __init__(self):
+        self.slept: list[float] = []
+
+    def sleep(self, seconds):
+        self.slept.append(seconds)
+
+
+def _mk_batch(ps, interval=60):
+    b = batch_core.Batch(batch_id="t1", source_url="https://www.bilibili.com/video/BV1gK4y1o7Ni",
+                         title="T", interval_sec=interval, created_at="c")
+    b.items = [batch_core.BatchItem(p=p, title=f"p{p:02d}", duration=100) for p in ps]
+    return b
+
+
+def test_run_batch_happy_path_interval_between_items():
+    batch = _mk_batch([1, 2])
+    clock = FakeClock()
+    made = []
+
+    def job_factory(item, result):
+        made.append(item.p)
+        return f"job-{item.p}"
+
+    batch_core.run_batch(batch, pipeline=lambda url: f"rows@{url}",
+                         job_factory=job_factory, sleep=clock.sleep, on_persist=lambda b: None)
+    assert [i.status for i in batch.items] == ["done", "done"]
+    assert [i.job_id for i in batch.items] == ["job-1", "job-2"]
+    assert made == [1, 2]
+    assert clock.slept == [60]  # 只有集间间隔,最后一集后不睡
+    assert batch.state == "finished"
+
+
+def test_run_batch_url_carries_p():
+    seen = []
+
+    def pipeline(url):
+        seen.append(url)
+        return "r"
+
+    batch = _mk_batch([6])
+    batch_core.run_batch(batch, pipeline=pipeline, job_factory=lambda i, r: "j",
+                         sleep=lambda s: None, on_persist=lambda b: None)
+    assert seen == ["https://www.bilibili.com/video/BV1gK4y1o7Ni?p=6"]
+
+
+def test_run_batch_retry_backoff_then_fail_then_continue():
+    batch = _mk_batch([1, 2])
+    clock = FakeClock()
+    calls = {"1": 0, "2": 0}
+
+    def pipeline(url):
+        p = url.split("p=")[1]
+        calls[p] += 1
+        if p == "1":
+            raise RuntimeError("网络被掐")
+        return "ok"
+
+    def job_factory(item, result):
+        return f"job-{item.p}"
+
+    batch_core.run_batch(batch, pipeline=pipeline, job_factory=job_factory,
+                         sleep=clock.sleep, on_persist=lambda b: None)
+    assert calls == {"1": 3, "2": 1}                      # 失败集试满3次,下一集1次
+    assert batch.items[0].status == "failed" and "网络被掐" in batch.items[0].error
+    assert batch.items[1].status == "done"
+    assert clock.slept == [60, 300, 60]                   # 第1集退避两轮(60,300),集间60
+    assert batch.state == "finished"
+
+
+def test_run_batch_resume_skips_done_items():
+    batch = _mk_batch([1, 2])
+    batch.items[0].status, batch.items[0].job_id = "done", "old-job"
+    ran = []
+    batch_core.run_batch(batch, pipeline=lambda url: ran.append(url) or "r",
+                         job_factory=lambda i, r: f"job-{i.p}",
+                         sleep=lambda s: None, on_persist=lambda b: None)
+    assert ran == ["https://www.bilibili.com/video/BV1gK4y1o7Ni?p=2"]  # done 集不再跑
+    assert batch.state == "finished"
