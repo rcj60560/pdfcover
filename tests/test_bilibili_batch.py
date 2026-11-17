@@ -186,3 +186,77 @@ def test_run_batch_resume_skips_done_items():
                          sleep=lambda s: None, on_persist=lambda b: None)
     assert ran == ["https://www.bilibili.com/video/BV1gK4y1o7Ni?p=2"]  # done 集不再跑
     assert batch.state == "finished"
+
+
+import app as app_module  # noqa: E402  (BASE 已在 sys.path)
+
+
+@pytest.fixture()
+def flask_client(monkeypatch, tmp_path):
+    monkeypatch.setattr(app_module, "BATCH_DIR", tmp_path)
+    app_module.BATCHES.clear()
+    app_module.BATCH_THREADS.clear()
+    app_module.BATCH_JOBS.clear()
+    app_module.app.config["TESTING"] = True
+    with app_module.app.test_client() as client:
+        yield client, monkeypatch
+
+
+def _fake_view_api(monkeypatch, pages, title="系列T"):
+    payload = {"code": 0, "data": {"title": title,
+               "pages": [{"page": p, "part": f"p{p:02d}", "duration": 100} for p in pages]}}
+    monkeypatch.setattr(app_module, "_fetch_view_api", lambda bvid: payload)
+
+
+def test_batch_list_endpoint_parses_and_sorts(flask_client):
+    client, monkeypatch = flask_client
+    _fake_view_api(monkeypatch, [2, 1])
+    resp = client.post("/api/batch/list", json={"url": "https://www.bilibili.com/video/BV1gK4y1o7Ni?p=8"})
+    body = resp.get_json()
+    assert body["ok"] and body["total"] == 2
+    assert [i["p"] for i in body["items"]] == [1, 2]
+
+
+def test_batch_start_runs_inline_and_creates_jobs(flask_client, monkeypatch):
+    client, mp = flask_client
+    _fake_view_api(mp, [1, 2])
+    ran = []
+
+    def fake_pipeline(url, browser, model_name, log=None):
+        ran.append(url)
+        class R:  # 最小 AudioPipelineResult 替身
+            rows = [type("Row", (), {"english": "Hello", "chinese": ""})()]
+            methods = ["语音识别"]
+            title = "t"
+        return R()
+
+    mp.setattr(app_module, "TRANSCRIBE_PIPELINE", fake_pipeline)
+    mp.setattr(app_module.batch_core, "run_batch", lambda b, **kw: ran.append("run:" + b.batch_id))
+    resp = client.post("/api/batch/start", json={"url": "BV1gK4y1o7Ni", "ps": [2, 1], "interval": 30})
+    body = resp.get_json()
+    assert body["ok"] and body["total"] == 2
+    batch_id = body["batch_id"]
+    detail = client.get(f"/api/batch/{batch_id}").get_json()["batch"]
+    assert [i["p"] for i in detail["items"]] == [1, 2]  # 升序
+    assert detail["interval_sec"] == 30
+    # 批次文件已落盘
+    assert (list(app_module.BATCH_DIR.glob("*.json"))[0].stem) == batch_id
+
+
+def test_batch_start_missing_ps_rejected(flask_client):
+    client, mp = flask_client
+    _fake_view_api(mp, [1, 2])
+    resp = client.post("/api/batch/start", json={"url": "BV1gK4y1o7Ni", "ps": [1, 9]})
+    body = resp.get_json()
+    assert not body["ok"] and "9" in body["error"]
+
+
+def test_batch_job_visible_to_job_or_error(flask_client):
+    client, mp = flask_client
+    _fake_view_api(mp, [1])
+    job = app_module.Job(video=app_module.extractor.ExtractedVideo(
+        title="t", source_url="u", uploader="", duration=0, tracks=(), warnings=()))
+    app_module.BATCH_JOBS["bj1"] = job
+    assert app_module._job_or_error("bj1") is job
+    with pytest.raises(LookupError):
+        app_module._job_or_error("nope")

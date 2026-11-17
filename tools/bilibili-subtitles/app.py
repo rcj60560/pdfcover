@@ -4,6 +4,7 @@ from __future__ import annotations
 import sys
 import os
 import re
+import json
 import tempfile
 import time
 from datetime import datetime
@@ -22,6 +23,8 @@ import tts_bridge
 import alignment_agent
 from extractor import ExtractedVideo, ExtractionError, extract_video
 from xlsx_export import build_xlsx
+import batch_core
+import extractor
 
 # 可注入点：测试用假实现替换，避免触网/加载模型。
 TRANSCRIBE_PIPELINE = direct_generate.generate_rows_from_audio
@@ -107,6 +110,25 @@ _transcribe_start_lock = Lock()
 _tts_start_lock = Lock()
 # 进程启动时刻：页面显示"服务启动于 HH:MM:SS"，用于确认是否真的重启过
 _SERVER_STARTED_AT = datetime.now().strftime("%H:%M:%S")
+
+# ---- 批量模式:批次注册表 / 批量job独立存放(不进 JobStore 的 LRU,防 216 集把自己挤掉) ----
+BATCH_DIR = Path(__file__).resolve().parent / "outputs" / "batch"
+BATCHES: dict[str, batch_core.Batch] = {}
+BATCH_THREADS: dict[str, Thread] = {}
+BATCH_JOBS: dict[str, Job] = {}
+_batch_lock = Lock()
+
+for _saved in batch_core.load_batches(BATCH_DIR):  # 启动即恢复(不自动跑,等用户点「恢复」)
+    BATCHES[_saved.batch_id] = _saved
+
+
+def _fetch_view_api(bvid: str) -> dict:
+    """一次调用拿全部分P标题/时长。复用 _download_subtitle 的 普通→chrome131 指纹兜底链。"""
+    url = f"https://api.bilibili.com/x/web-interface/view?bvid={bvid}"
+    headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
+               "Referer": "https://www.bilibili.com/"}
+    text = extractor._download_subtitle(url, headers)
+    return json.loads(text)
 
 
 def _tts_deps_missing() -> str | None:
@@ -286,7 +308,7 @@ def _video_public(video: ExtractedVideo) -> dict:
 
 
 def _job_or_error(job_id: str) -> Job:
-    job = jobs.get(job_id)
+    job = jobs.get(job_id) or BATCH_JOBS.get(job_id)
     if job is None:
         raise LookupError("任务已过期，请重新读取字幕")
     return job
@@ -696,6 +718,165 @@ def download(job_id: str, kind: str):
             as_attachment=True, download_name=basename + "-朗读.mp3",
         )
     return "只支持 md / xlsx / srt / mp3", 404
+
+
+def _batch_public(batch: batch_core.Batch) -> dict:
+    done = sum(1 for i in batch.items if i.status == "done")
+    failed = sum(1 for i in batch.items if i.status == "failed")
+    thread = BATCH_THREADS.get(batch.batch_id)
+    return {
+        "batch_id": batch.batch_id, "title": batch.title, "state": batch.state,
+        "total": len(batch.items), "done": done, "failed": failed,
+        "resumable": batch.state == "running" and (thread is None or not thread.is_alive()),
+        "created_at": batch.created_at,
+    }
+
+
+def _persist(batch: batch_core.Batch) -> None:
+    with _batch_lock:
+        batch_core.save_batch(batch, BATCH_DIR)
+
+
+def _start_batch_thread(batch: batch_core.Batch) -> None:
+    def _say_dummy(message):  # 批量集内日志走服务控制台;阅读页日志区留空
+        print(f"[batch {batch.batch_id}] {message}", flush=True)
+
+    def _pipeline(url: str):
+        return TRANSCRIBE_PIPELINE(url, "none", "small.en", log=_say_dummy)
+
+    def _job_factory(item, result):
+        job = Job(video=ExtractedVideo(
+            title=f"{item.title}", source_url=f"{batch.source_url}?p={item.p}",
+            uploader="", duration=float(item.duration), tracks=(), warnings=()))
+        job.rows = result.rows
+        english_text, _ = direct_generate.split_methods(result.methods)
+        job.english_label = english_text or "语音识别"
+        job.chinese_label = "待词典对照"
+        job.transcribe.phase = "done"
+        job.transcribe.total = len(result.rows)
+        job.transcribe.done = len(result.rows)
+        with _batch_lock:
+            key = uuid4().hex
+            BATCH_JOBS[key] = job
+        return key
+
+    thread = Thread(
+        target=batch_core.run_batch,
+        args=(batch,),
+        kwargs={"pipeline": _pipeline, "job_factory": _job_factory,
+                "sleep": time.sleep, "on_persist": _persist},
+        daemon=True,
+    )
+    BATCH_THREADS[batch.batch_id] = thread
+    thread.start()
+
+
+@app.post("/api/batch/list")  # 注意:与 GET /api/batch/list 同路径不同方法,Flask 各自注册
+def batch_list_episodes():
+    data = request.get_json(silent=True) or {}
+    try:
+        bvid = batch_core.extract_bvid(str(data.get("url") or ""))
+        title, items = batch_core.parse_view_api(_fetch_view_api(bvid))
+    except (ValueError, RuntimeError, OSError) as exc:
+        return jsonify(ok=False, error=str(exc)), 400
+    return jsonify(ok=True, title=title, total=len(items),
+                   items=[{"p": i.p, "title": i.title, "duration": i.duration} for i in items])
+
+
+@app.get("/api/batch/list")
+def batch_list_saved():
+    return jsonify(ok=True, batches=[_batch_public(b) for b in BATCHES.values()])
+
+
+@app.post("/api/batch/start")
+def batch_start():
+    data = request.get_json(silent=True) or {}
+    ps = data.get("ps") or []
+    if not isinstance(ps, list) or not ps or not all(isinstance(p, int) for p in ps):
+        return jsonify(ok=False, error="请先勾选至少一集"), 400
+    try:
+        bvid = batch_core.extract_bvid(str(data.get("url") or ""))
+        title, items = batch_core.parse_view_api(_fetch_view_api(bvid))
+    except (ValueError, RuntimeError, OSError) as exc:
+        return jsonify(ok=False, error=str(exc)), 400
+    by_p = {i.p: i for i in items}
+    missing = [p for p in ps if p not in by_p]
+    if missing:
+        return jsonify(ok=False, error=f"这些集数在合集里不存在:{','.join(map(str, missing))}"), 400
+    batch = batch_core.Batch(
+        batch_id=uuid4().hex, source_url=f"https://www.bilibili.com/video/{bvid}",
+        title=title, interval_sec=max(10, min(600, int(data.get("interval") or 60))),
+        created_at=datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+    )
+    batch.items = [batch_core.BatchItem(p=p, title=by_p[p].title, duration=by_p[p].duration)
+                   for p in sorted(set(ps))]
+    BATCHES[batch.batch_id] = batch
+    _persist(batch)
+    _start_batch_thread(batch)
+    return jsonify(ok=True, batch_id=batch.batch_id, total=len(batch.items))
+
+
+def _batch_or_error(batch_id: str) -> batch_core.Batch:
+    batch = BATCHES.get(batch_id)
+    if batch is None:
+        raise LookupError("批次不存在或已过期")
+    return batch
+
+
+@app.get("/api/batch/<batch_id>")
+def batch_detail(batch_id: str):
+    try:
+        batch = _batch_or_error(batch_id)
+    except LookupError as exc:
+        return jsonify(ok=False, error=str(exc)), 404
+    return jsonify(ok=True, batch=asdict_public(batch))
+
+
+def asdict_public(batch: batch_core.Batch) -> dict:
+    d = batch_core.batch_to_json(batch)
+    return d
+
+
+@app.post("/api/batch/<batch_id>/retry")
+def batch_retry(batch_id: str):
+    try:
+        batch = _batch_or_error(batch_id)
+    except LookupError as exc:
+        return jsonify(ok=False, error=str(exc)), 404
+    data = request.get_json(silent=True) or {}
+    try:
+        p = int(data.get("p"))
+    except (TypeError, ValueError):
+        return jsonify(ok=False, error="缺少集数 p"), 400
+    item = next((i for i in batch.items if i.p == p), None)
+    if item is None:
+        return jsonify(ok=False, error=f"批次里没有第 {p} 集"), 400
+    if item.status == "running":
+        return jsonify(ok=False, error="这一集正在处理中"), 409
+    item.status, item.error, item.attempts = "queued", "", 0
+    _persist(batch)
+    thread = BATCH_THREADS.get(batch_id)
+    if batch.state == "finished":
+        batch.state = "running"
+        _persist(batch)
+    if thread is None or not thread.is_alive():
+        _start_batch_thread(batch)
+    return jsonify(ok=True)
+
+
+@app.post("/api/batch/<batch_id>/resume")
+def batch_resume(batch_id: str):
+    try:
+        batch = _batch_or_error(batch_id)
+    except LookupError as exc:
+        return jsonify(ok=False, error=str(exc)), 404
+    if not any(i.status == "queued" for i in batch.items):
+        return jsonify(ok=False, error="没有待处理的集数"), 400
+    thread = BATCH_THREADS.get(batch_id)
+    if thread is not None and thread.is_alive():
+        return jsonify(ok=True)  # 已在跑,幂等
+    _start_batch_thread(batch)
+    return jsonify(ok=True)
 
 
 def _shutdown_server() -> None:
