@@ -302,3 +302,43 @@ def test_start_batch_thread_guard_against_double_start(monkeypatch, tmp_path):
     assert app_module._start_batch_thread(b) is True
     assert app_module._start_batch_thread(b) is False   # 已活线程→拒绝双起
     assert len(started) == 1
+
+
+def test_kill_process_tree_uses_taskkill_on_windows(monkeypatch):
+    import alignment_agent
+    calls = []
+    monkeypatch.setattr(alignment_agent.shutil, "which", lambda name: "claude.cmd")
+    monkeypatch.setattr(alignment_agent.os, "name", "nt")
+    monkeypatch.setattr(alignment_agent.subprocess, "run", lambda cmd, **kw: calls.append(cmd))
+    alignment_agent._kill_process_tree(1234)
+    assert calls and calls[0][:4] == ["taskkill", "/F", "/T", "/PID"] and calls[0][4] == "1234"
+
+
+def test_run_claude_align_model_flag_and_fallback(monkeypatch, tmp_path):
+    import alignment_agent
+    monkeypatch.setattr(alignment_agent.shutil, "which", lambda name: "claude.cmd")
+    commands = []
+
+    def fake_run(command, **kwargs):
+        commands.append(command)
+        class R: returncode = (1 if len(commands) == 1 else 0); stdout = "OUT"; stderr = ""
+        return R()
+
+    class FakeProcess:  # _run 走 Popen+communicate;只补进程桩,断言与 run 桩一致
+        def __init__(self, command, **kwargs):
+            commands.append(command)
+            self.args, self.pid = command, 4000 + len(commands)
+            self.returncode = (1 if len(commands) == 1 else 0)
+
+        def communicate(self, input=None, timeout=None):
+            return "OUT", ""
+
+    monkeypatch.setattr(alignment_agent.subprocess, "run", fake_run)
+    monkeypatch.setattr(alignment_agent.subprocess, "Popen", FakeProcess)
+    monkeypatch.delenv("BILISUB_ALIGN_MODEL", raising=False)
+    out = alignment_agent.run_claude_align("PROMPT")
+    assert out == "OUT"
+    flat = [c for cmd in commands for c in cmd]
+    assert "--model" in flat and "haiku" in flat      # 默认快档
+    assert any(c == "claude.cmd" for cmd in commands for c in cmd)
+    assert "cmd" in commands[0] and "/c" in commands[0]  # .cmd 走 cmd /c 包装
