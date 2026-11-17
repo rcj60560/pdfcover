@@ -416,6 +416,10 @@ loadServerStarted();
 // ---- 批量模式 ----
 const batchState = { episodes: [], batchId: "", timer: null };
 
+// B站标题可能带引号/尖括号，进 innerHTML 前必须转义
+const escHtml = (s) => String(s)
+  .replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+
 function batchStatusBadge(status) {
   return { queued: "⏳ 排队", running: "🔄 进行中", done: "✅ 完成", failed: "❌ 失败" }[status] || status;
 }
@@ -434,7 +438,7 @@ async function listBatchEpisodes() {
       const row = document.createElement("label");
       row.className = "batch-episode";
       row.innerHTML = `<input type="checkbox" data-p="${ep.p}">` +
-        `<span class="p">p${ep.p}</span><span class="t" title="${ep.title}">${ep.title}</span>` +
+        `<span class="p">p${ep.p}</span><span class="t" title="${escHtml(ep.title)}">${escHtml(ep.title)}</span>` +
         `<span class="d">${Math.round(ep.duration / 60)} 分钟</span>`;
       list.append(row);
     });
@@ -507,7 +511,7 @@ function renderBatch(batch) {
     } else if (item.status === "failed") {
       ops.push(`<button onclick="retryBatchItem(${item.p})">重试</button>`);
     }
-    tr.innerHTML = `<td>p${item.p}</td><td title="${item.title}">${item.title.slice(0, 40)}</td>` +
+    tr.innerHTML = `<td>p${item.p}</td><td title="${escHtml(item.title)}">${escHtml(item.title.slice(0, 40))}</td>` +
       `<td class="st st-${item.status}">${batchStatusBadge(item.status)}</td>` +
       `<td class="op">${ops.join(" ")}</td>`;
     tbody.append(tr);
@@ -542,7 +546,7 @@ async function loadSavedBatches() {
         ? `<button onclick="resumeBatch('${b.batch_id}')">恢复</button>` : "";
       const view = b.state === "running" || b.done
         ? `<a href="javascript:void(0)" onclick="viewBatch('${b.batch_id}')">查看</a>` : "";
-      row.innerHTML = `<b>${b.title.slice(0, 26)}</b><span>${b.done}/${b.total} · ` +
+      row.innerHTML = `<b>${escHtml(b.title.slice(0, 26))}</b><span>${b.done}/${b.total} · ` +
         `${b.state === "finished" ? "已完成" : "未完成"}</span>${view}${resume}`;
       wrap.append(row);
     });
