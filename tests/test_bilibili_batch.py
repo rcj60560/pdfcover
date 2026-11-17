@@ -45,3 +45,35 @@ def test_batch_item_defaults():
     assert item.error == "" and item.attempts == 0
     b = batch_core.Batch(batch_id="x", source_url="https://www.bilibili.com/video/BV1gK4y1o7Ni", title="系列")
     assert b.interval_sec == batch_core.DEFAULT_INTERVAL_SEC and b.state == "running"
+
+
+def test_extract_bvid_from_url_bv_and_invalid():
+    assert batch_core.extract_bvid("https://www.bilibili.com/video/BV1gK4y1o7Ni/?p=8&x=1") == "BV1gK4y1o7Ni"
+    assert batch_core.extract_bvid("BV1gK4y1o7Ni") == "BV1gK4y1o7Ni"
+    assert batch_core.extract_bvid("bv1gk4y1o7ni?p=4") == "bv1gk4y1o7ni"  # 小写原样保留
+    with pytest.raises(ValueError):
+        batch_core.extract_bvid("https://www.bilibili.com/video/av170001")
+
+
+def test_parse_view_api_pages_sorted_to_items():
+    payload = {
+        "code": 0,
+        "data": {
+            "title": "【216集完整版】Reading Explorer",
+            "pages": [
+                {"page": 2, "part": "第二集 标题B", "duration": 1601},
+                {"page": 1, "part": "第一集 标题A", "duration": 1703},
+            ],
+        },
+    }
+    title, items = batch_core.parse_view_api(payload)
+    assert title == "【216集完整版】Reading Explorer"
+    assert [i.p for i in items] == [1, 2]
+    assert items[0].title == "第一集 标题A" and items[0].duration == 1703
+
+
+def test_parse_view_api_error_code_raises():
+    with pytest.raises(ValueError, match="链接无效或权限不足"):
+        batch_core.parse_view_api({"code": -400, "message": "请求错误"})
+    with pytest.raises(ValueError, match="B站返回异常数据"):
+        batch_core.parse_view_api({"code": 0, "data": {}})

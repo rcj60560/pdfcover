@@ -59,3 +59,30 @@ def backoff_seconds(attempts: int) -> int:
     if attempts <= 0:
         return 0
     return _BACKOFF_LADDER[min(attempts, len(_BACKOFF_LADDER)) - 1]
+
+
+def extract_bvid(value: str) -> str:
+    """从任意输入(BV号/视频页URL含?p=)提取 BV 号;没有则抛 ValueError。"""
+    raw = (value or "").strip()
+    m = re.search(r"(?i)(BV[0-9A-Za-z]{8,14})", raw)
+    if not m:
+        raise ValueError("没找到 BV 号:请贴形如 BV1gK4y1o7Ni 的合集/视频链接")
+    return m.group(1)
+
+
+def parse_view_api(payload: dict) -> tuple[str, list[BatchItem]]:
+    """B站 view API JSON → (系列标题, 按 p 升序的 BatchItem 列表)。分P标题字段是 part。"""
+    if not isinstance(payload, dict) or payload.get("code") != 0:
+        message = (payload or {}).get("message") if isinstance(payload, dict) else None
+        raise ValueError(f"链接无效或权限不足:B站返回 {message or payload!r:.80}")
+    data = payload.get("data") or {}
+    pages = data.get("pages") or []
+    if not pages:
+        raise ValueError("B站返回异常数据:没有分P列表")
+    items = [
+        BatchItem(p=int(page.get("page") or 0), title=str(page.get("part") or f"p{page.get('page')}"),
+                  duration=int(page.get("duration") or 0))
+        for page in pages if page.get("page")
+    ]
+    items.sort(key=lambda i: i.p)
+    return str(data.get("title") or ""), items
