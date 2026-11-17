@@ -77,3 +77,31 @@ def test_parse_view_api_error_code_raises():
         batch_core.parse_view_api({"code": -400, "message": "请求错误"})
     with pytest.raises(ValueError, match="B站返回异常数据"):
         batch_core.parse_view_api({"code": 0, "data": {}})
+
+
+def test_batch_persistence_roundtrip_and_running_reset(tmp_path):
+    batch = batch_core.Batch(batch_id="ab12", source_url="https://www.bilibili.com/video/BV1gK4y1o7Ni",
+                             title="系列", created_at="2026-11-17 10:00:00")
+    batch.items = [
+        batch_core.BatchItem(p=6, title="p06", duration=1703, status="done", job_id="j1"),
+        batch_core.BatchItem(p=7, title="p07", duration=1601, status="running"),
+        batch_core.BatchItem(p=8, title="p08", duration=1500, status="failed", error="x", attempts=3),
+    ]
+    path = batch_core.save_batch(batch, tmp_path)
+    assert path.name == "ab12.json" and path.exists()
+
+    loaded = batch_core.load_batches(tmp_path)
+    assert len(loaded) == 1
+    b = loaded[0]
+    assert b.batch_id == "ab12" and b.title == "系列" and b.interval_sec == 60
+    assert [i.status for i in b.items] == ["done", "queued", "failed"]  # running→queued
+    assert b.items[0].job_id == "j1" and b.items[2].error == "x"
+
+
+def test_load_batches_skips_corrupt_files(tmp_path):
+    (tmp_path / "bad.json").write_text("{not json", encoding="utf-8")
+    good = batch_core.Batch(batch_id="cd34", source_url="u", title="t", created_at="c")
+    good.items = [batch_core.BatchItem(p=1, title="p1", duration=60)]
+    batch_core.save_batch(good, tmp_path)
+    loaded = batch_core.load_batches(tmp_path)
+    assert [b.batch_id for b in loaded] == ["cd34"]

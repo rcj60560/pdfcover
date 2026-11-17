@@ -86,3 +86,43 @@ def parse_view_api(payload: dict) -> tuple[str, list[BatchItem]]:
     ]
     items.sort(key=lambda i: i.p)
     return str(data.get("title") or ""), items
+
+
+def batch_to_json(batch: Batch) -> dict:
+    d = asdict(batch)
+    return d
+
+
+def batch_from_json(d: dict) -> Batch:
+    items = [BatchItem(**item) for item in d.get("items", [])]
+    # 恢复语义:上次中断时 running 的集子回到排队;done/failed 原样保留
+    for item in items:
+        if item.status == "running":
+            item.status = "queued"
+    return Batch(
+        batch_id=str(d.get("batch_id") or ""), source_url=str(d.get("source_url") or ""),
+        title=str(d.get("title") or ""), items=items,
+        interval_sec=int(d.get("interval_sec") or DEFAULT_INTERVAL_SEC),
+        state=str(d.get("state") or "finished"), created_at=str(d.get("created_at") or ""),
+    )
+
+
+def save_batch(batch: Batch, directory: Path) -> Path:
+    """原子写:先 tmp 后 os.replace,断电不留半个文件。"""
+    directory = Path(directory)
+    directory.mkdir(parents=True, exist_ok=True)
+    target = directory / f"{batch.batch_id}.json"
+    tmp = directory / f"{batch.batch_id}.json.tmp"
+    tmp.write_text(json.dumps(batch_to_json(batch), ensure_ascii=False, indent=2), encoding="utf-8")
+    os.replace(tmp, target)
+    return target
+
+
+def load_batches(directory: Path) -> list[Batch]:
+    out: list[Batch] = []
+    for path in sorted(Path(directory).glob("*.json")):
+        try:
+            out.append(batch_from_json(json.loads(path.read_text(encoding="utf-8"))))
+        except (OSError, ValueError, TypeError, KeyError):
+            continue  # 坏文件跳过,不拖垮整个启动加载
+    return out
