@@ -342,3 +342,23 @@ def test_run_claude_align_model_flag_and_fallback(monkeypatch, tmp_path):
     assert "--model" in flat and "haiku" in flat      # 默认快档
     assert any(c == "claude.cmd" for cmd in commands for c in cmd)
     assert "cmd" in commands[0] and "/c" in commands[0]  # .cmd 走 cmd /c 包装
+
+
+def test_run_claude_align_timeout_kills_process_tree(monkeypatch):
+    import alignment_agent
+    import subprocess as _sp
+    monkeypatch.setattr(alignment_agent.shutil, "which", lambda name: "claude.cmd")
+    killed = []
+
+    class TimeoutProcess:
+        def __init__(self, command, **kwargs):
+            self.pid, self.args, self.returncode = 4321, command, None
+        def communicate(self, input=None, timeout=None):
+            raise _sp.TimeoutExpired(cmd="claude", timeout=timeout)
+
+    monkeypatch.setattr(alignment_agent.subprocess, "Popen", TimeoutProcess)
+    monkeypatch.setattr(alignment_agent, "_kill_process_tree", lambda pid: killed.append(pid))
+    monkeypatch.delenv("BILISUB_ALIGN_MODEL", raising=False)
+    with pytest.raises(RuntimeError, match="排版超时"):
+        alignment_agent.run_claude_align("PROMPT")
+    assert killed == [4321]  # 超时即杀树根(cmd壳),node子进程随之收命

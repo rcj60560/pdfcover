@@ -98,6 +98,8 @@ def run_claude_align(prompt: str, timeout: int = ALIGN_TIMEOUT_SECONDS) -> str:
             result = _run(retry_command, prompt, timeout)
         except subprocess.TimeoutExpired as exc:
             raise RuntimeError(f"排版超时（>{timeout} 秒），已终止进程树，可重试，或改用「保存，交给 Claude 排版」") from exc
+        except OSError as exc:
+            raise RuntimeError(f"claude 命令启动失败：{exc}") from exc
     output = (result.stdout or "").strip()
     if result.returncode != 0 or not output:
         detail = (result.stderr or "").strip().splitlines()
