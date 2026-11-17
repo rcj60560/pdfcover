@@ -420,6 +420,29 @@ def _yt_dlp_options(browser: str) -> dict:
     return options
 
 
+def _connection_killed(message: str) -> bool:
+    """链路掐TLS指纹的特征:连接被本机中止/重置/SSL失败,而非站点业务错误(与extractor同款,内联避免跨模块import)"""
+    lower = message.lower()
+    return any(
+        key in lower
+        for key in (
+            "10053", "10054", "connection aborted", "connection was aborted",
+            "recv failure", "connectionreset", "ssl", "timed out", "timeout",
+        )
+    )
+
+
+def _apply_chrome_impersonate(options: dict) -> bool:
+    """把 yt-dlp 选项切到 chrome131 指纹(需 curl_cffi);不可用返回 False"""
+    try:
+        from curl_cffi import __version__  # noqa: F401 - 指纹模拟的实际执行者
+        from yt_dlp.networking.impersonate import ImpersonateTarget
+    except Exception:
+        return False
+    options["impersonate"] = ImpersonateTarget("chrome", "131")
+    return True
+
+
 def download_audio(url: str, temp_dir: Path, browser: str) -> tuple[Path, dict]:
     try:
         import yt_dlp
@@ -437,7 +460,14 @@ def download_audio(url: str, temp_dir: Path, browser: str) -> tuple[Path, dict]:
         "overwrites": True,
     }
     with yt_dlp.YoutubeDL(options) as downloader:
-        info = downloader.extract_info(core.normalize_bilibili_url(url), download=True)
+        try:
+            info = downloader.extract_info(core.normalize_bilibili_url(url), download=True)
+        except Exception as exc:
+            # 链路掐TLS指纹时换chrome131重试(与extractor同思路,本模块自包含)
+            if not (_connection_killed(str(exc)) and _apply_chrome_impersonate(options)):
+                raise
+            with yt_dlp.YoutubeDL(options) as retry_downloader:
+                info = retry_downloader.extract_info(core.normalize_bilibili_url(url), download=True)
     if not isinstance(info, dict):
         raise RuntimeError("没有读到有效的视频信息")
     candidates = [

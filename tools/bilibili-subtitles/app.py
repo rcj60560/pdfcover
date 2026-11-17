@@ -508,17 +508,45 @@ def tts_status(job_id: str):
 
 @app.get("/api/jobs/<job_id>/plain-text")
 def plain_text(job_id: str):
-    """词典精翻流程用：英文整段（空格拼接、无换行），复制给词典整段翻译。"""
+    """词典精翻流程用：英文整段（空格拼接、无换行），复制给词典整段翻译。
+    词典单次整段翻译有字符上限（欧路约 15000，含空格），超限时前端改用分段复制。"""
     try:
         job = _job_or_error(job_id)
     except LookupError as exc:
         return str(exc), 404
     if not job.rows:
         return jsonify(ok=False, error="请先生成预览"), 400
+    english = " ".join(row.english for row in job.rows if row.english)
     return jsonify(
-        english=" ".join(row.english for row in job.rows if row.english),
+        english=english,
+        segments=_split_english_segments(job.rows),
         chinese="".join(row.chinese for row in job.rows if row.chinese),
     )
+
+
+DICT_SEGMENT_LIMIT = 12000  # 欧路整段翻译上限约 15000 字符（含空格），留余量按字幕块切
+
+
+def _split_english_segments(rows, limit: int = DICT_SEGMENT_LIMIT) -> list[str]:
+    """把空格拼接的英文按字幕块切成多段：每段不超 limit 字符，且段内保持不换行。
+    只在块边界下刀，句子语义天然完整；单块超限（极罕见）自成一段不硬切。"""
+    segments: list[str] = []
+    current: list[str] = []
+    size = 0
+    for row in rows:
+        text = (row.english or "").strip()
+        if not text:
+            continue
+        cost = len(text) + (1 if current else 0)  # 空格拼接后的真实长度
+        if current and size + cost > limit:
+            segments.append(" ".join(current))
+            current, size = [text], len(text)
+        else:
+            current.append(text)
+            size += cost
+    if current:
+        segments.append(" ".join(current))
+    return segments
 
 
 @app.post("/api/jobs/<job_id>/import-chinese")

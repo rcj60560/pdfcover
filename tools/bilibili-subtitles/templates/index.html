@@ -97,6 +97,7 @@
           <button id="font-larger" type="button" title="增大字号">A+</button>
         </div>
         <button class="copy-button" id="copy-en" type="button" title="复制不换行英文整段，直接丢给词典整段翻译">📋 复制英文全文</button>
+        <div id="copy-segments" class="copy-segments" hidden></div>
       </div>
       <div class="reader-body">
         <div class="reader-main">
@@ -106,9 +107,10 @@
         <aside class="align-panel" aria-label="词典中文粘贴区">
           <h3>词典中文粘贴区</h3>
           <p class="align-hint">
-            点「📋 复制英文全文」丢给词典翻译，把返回的<b>整段中文</b>直接粘到这里，
+            点「📋 复制英文」丢给词典翻译，把返回的<b>整段中文</b>直接粘到这里，
             点「🤖 一键排版」——本机自动切分对齐回填，全程不用离开页面。
           </p>
+          <p class="align-hint" id="seg-hint" hidden></p>
           <textarea id="raw-chinese-text" rows="14" placeholder="把词典翻译的整段中文直接粘贴到这里…"></textarea>
           <div class="align-actions">
             <button class="primary" id="auto-align" type="button">🤖 一键排版</button>

@@ -4,6 +4,7 @@ const state = {
   jobId: "",
   rows: [],
   fontScale: 1,
+  englishSegments: [],
 };
 
 let transcribeTimer = null;
@@ -211,6 +212,7 @@ function renderRows(data) {
   $("no-match").hidden = true;
   $("reader").hidden = false;
   $("reader").scrollIntoView({ behavior: "smooth", block: "start" });
+  prepareCopySegments();
 }
 
 function filterRows() {
@@ -242,6 +244,52 @@ async function copyEnglish() {
     button.textContent = "复制失败";
   }
   window.setTimeout(() => { button.textContent = "📋 复制英文全文"; }, 2200);
+}
+
+// 词典整段翻译有字符上限（欧路约15000含空格）：超限时长文自动改成分段复制，
+// 每段在字幕块边界下刀、段内不换行；译文逐段粘回同一个粘贴区即可（换行分隔）。
+async function prepareCopySegments() {
+  try {
+    const response = await fetch(`/api/jobs/${state.jobId}/plain-text`);
+    if (!response.ok) return;
+    const { english, segments } = await response.json();
+    state.englishSegments = Array.isArray(segments) && segments.length ? segments : [english];
+    const wrap = $("copy-segments");
+    wrap.replaceChildren();
+    const hint = $("seg-hint");
+    if (state.englishSegments.length < 2) {
+      $("copy-en").hidden = false;
+      wrap.hidden = true;
+      if (hint) hint.hidden = true;
+      return;
+    }
+    $("copy-en").hidden = true;
+    wrap.hidden = false;
+    state.englishSegments.forEach((segment, index) => {
+      const btn = document.createElement("button");
+      btn.type = "button";
+      btn.className = "copy-button";
+      btn.textContent = `📋 复制第${index + 1}段(${(segment.length / 1000).toFixed(1)}k)`;
+      btn.addEventListener("click", () => copySegment(index, btn));
+      wrap.append(btn);
+    });
+    if (hint) {
+      hint.textContent = `本文约 ${english.length} 字符，超出词典单次上限，已按句子边界分成 ${state.englishSegments.length} 段：` +
+        `逐段复制→翻译→把每段中文依次粘到下面粘贴区（一段一行即可），全部粘完再点「🤖 一键排版」。`;
+      hint.hidden = false;
+    }
+  } catch { /* 分段信息拿不到时保留单键整段复制 */ }
+}
+
+async function copySegment(index, button) {
+  const label = button.textContent;
+  try {
+    await navigator.clipboard.writeText(state.englishSegments[index]);
+    button.textContent = `第${index + 1}段已复制 ✓`;
+  } catch {
+    button.textContent = "复制失败";
+  }
+  window.setTimeout(() => { button.textContent = label; }, 2200);
 }
 
 function alignStatus(message, kind) {

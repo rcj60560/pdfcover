@@ -62,11 +62,57 @@ def _download_subtitle(url: str, headers: dict[str, str] | None = None) -> str:
         "Referer": "https://www.bilibili.com/",
         **(headers or {}),
     }
-    request = Request(url, headers=request_headers)
-    with urlopen(request, timeout=20) as response:  # noqa: S310 - URL 来自 yt-dlp 的字幕元数据
-        raw = response.read()
-        charset = response.headers.get_content_charset() or "utf-8"
-    return raw.decode(charset, errors="replace")
+    try:
+        request = Request(url, headers=request_headers)
+        with urlopen(request, timeout=20) as response:  # noqa: S310 - URL 来自 yt-dlp 的字幕元数据
+            raw = response.read()
+            charset = response.headers.get_content_charset() or "utf-8"
+        return raw.decode(charset, errors="replace")
+    except Exception as exc:
+        # 部分网络(如某些手机热点)会掐非最新Chrome的TLS指纹;直连失败换chrome131指纹再试
+        if not _connection_killed(str(exc)):
+            raise
+        return _fetch_as_chrome(url, request_headers)
+
+
+def _fetch_as_chrome(url: str, headers: dict[str, str]) -> str:
+    try:
+        from curl_cffi import requests as chrome_requests
+    except ImportError as exc:
+        raise RuntimeError("当前网络要求浏览器TLS指纹，请先 pip install curl_cffi") from exc
+    response = chrome_requests.get(url, headers=headers, impersonate="chrome131", timeout=20)
+    response.raise_for_status()
+    return response.content.decode(response.encoding or "utf-8", errors="replace")
+
+
+def _connection_killed(message: str) -> bool:
+    """链路掐TLS指纹的特征:连接被本机中止/重置/SSL失败,而非B站返回的业务错误"""
+    lower = message.lower()
+    return any(
+        key in lower
+        for key in (
+            "10053",
+            "10054",
+            "connection aborted",
+            "connection was aborted",
+            "recv failure",
+            "connectionreset",
+            "ssl",
+            "timed out",
+            "timeout",
+        )
+    )
+
+
+def _apply_chrome_impersonate(options: dict[str, Any]) -> bool:
+    """把 yt-dlp 选项切到 chrome131 指纹(依赖 curl_cffi);不可用时返回 False"""
+    try:
+        from curl_cffi import __version__  # noqa: F401 - 指纹模拟的实际执行者
+        from yt_dlp.networking.impersonate import ImpersonateTarget
+    except Exception:
+        return False
+    options["impersonate"] = ImpersonateTarget("chrome", "131")
+    return True
 
 
 def _entry_payload(entry: dict[str, Any], headers: dict[str, str]) -> tuple[str, str]:
@@ -166,11 +212,32 @@ def extract_video(url: str, cookie_browser: str = "none") -> ExtractedVideo:
         # yt-dlp 官方接口格式：(browser, profile, keyring, container)
         options["cookiesfrombrowser"] = (browser, None, None, None)
 
+    def _attempt(opts: dict[str, Any]):
+        with yt_dlp.YoutubeDL(opts) as downloader:
+            return downloader.extract_info(normalized_url, download=False)
+
     try:
-        with yt_dlp.YoutubeDL(options) as downloader:
-            raw_info = downloader.extract_info(normalized_url, download=False)
+        raw_info = _attempt(options)
     except Exception as exc:
-        raise ExtractionError(_friendly_error(exc, browser)) from exc
+        # 部分网络会掐非最新Chrome的TLS指纹,连接被中止时自动换chrome131指纹重试一次
+        if _connection_killed(str(exc)) and "impersonate" not in options and _apply_chrome_impersonate(options):
+            logger.warnings.append("默认连接被网络重置，已自动切换 Chrome 指纹重试")
+            try:
+                raw_info = _attempt(options)
+            except Exception as exc2:
+                # VPN/网络切换后的过渡期:DNS缓存里是旧网络的解析,刷掉再试最后一次
+                if _connection_killed(str(exc2)):
+                    import subprocess as _sp
+                    try:
+                        _sp.run(["ipconfig", "/flushdns"], capture_output=True, timeout=10)
+                        logger.warnings.append("已刷新 DNS 缓存（网络切换过渡期），再试一次")
+                        raw_info = _attempt(options)
+                    except Exception as exc3:
+                        raise ExtractionError(_friendly_error(exc3, browser)) from exc3
+                else:
+                    raise ExtractionError(_friendly_error(exc2, browser)) from exc2
+        else:
+            raise ExtractionError(_friendly_error(exc, browser)) from exc
     if not isinstance(raw_info, dict):
         raise ExtractionError("没有读到有效的视频信息")
 

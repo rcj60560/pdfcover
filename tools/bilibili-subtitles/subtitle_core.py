@@ -74,6 +74,10 @@ class SubtitleParseError(ValueError):
 def normalize_bilibili_url(value: str) -> str:
     """只接受 B 站视频地址、b23.tv 短链或 BV/av 号，避免任意 URL 抓取。"""
     raw = (value or "").strip()
+    # 简写支持:BV号/av号 直接带 ?p=N(分P选集),如 "BV1gK4y1o7Ni?p=4"
+    part = re.fullmatch(r"(?i)(BV[0-9A-Za-z]{8,14}|av\d{1,15})\?p=(\d+)", raw)
+    if part:
+        return f"https://www.bilibili.com/video/{part.group(1)}?p={part.group(2)}"
     if re.fullmatch(r"(?i)BV[0-9A-Za-z]{8,14}", raw):
         return f"https://www.bilibili.com/video/{raw}"
     if re.fullmatch(r"(?i)av\d{1,15}", raw):

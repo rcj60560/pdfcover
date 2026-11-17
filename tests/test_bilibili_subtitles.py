@@ -43,6 +43,28 @@ def test_normalize_bilibili_url_accepts_video_short_and_bv():
     assert core.normalize_bilibili_url("BV1xx411c7mD").endswith("/BV1xx411c7mD")
     assert core.normalize_bilibili_url("https://www.bilibili.com/video/BV1xx411c7mD?p=2").endswith("?p=2")
     assert core.normalize_bilibili_url("b23.tv/abc123") == "https://b23.tv/abc123"
+    # BV号/av号简写直接带 ?p=N 选集
+    assert core.normalize_bilibili_url("BV1gK4y1o7Ni?p=4") == "https://www.bilibili.com/video/BV1gK4y1o7Ni?p=4"
+
+
+def test_split_english_segments_cuts_at_row_bounds_under_limit():
+    import app as app_module
+    from types import SimpleNamespace
+
+    def row(text):
+        return SimpleNamespace(english=text, chinese="")
+
+    rows = [row("word " * 60) for _ in range(10)]  # 每块300字符
+    segments = app_module._split_english_segments(rows, limit=1000)
+    assert all(len(seg) <= 1000 for seg in segments)          # 每段不超限
+    assert all("\n" not in seg for seg in segments)           # 段内不换行(词典整段翻译友好)
+    assert " ".join(segments).startswith(rows[0].english.strip())  # 首块原样开头
+    rebuilt = " ".join(row.english.strip() for row in rows)
+    assert " ".join(segments) == rebuilt                       # 段间重组=整段,不丢不重
+    assert len(segments) == 4                                  # 300*10=3000字符,1000/段→4段
+
+    short = [row("hello"), row("world")]
+    assert app_module._split_english_segments(short, limit=12000) == ["hello world"]  # 短文单段
     with pytest.raises(ValueError):
         core.normalize_bilibili_url("https://example.com/video/BV1xx411c7mD")
     with pytest.raises(ValueError):

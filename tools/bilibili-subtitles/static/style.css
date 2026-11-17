@@ -137,6 +137,7 @@ button.export:disabled { opacity: .62; cursor: wait; }
   min-height: 40px; padding: 0 12px; border-radius: 10px; color: #534a61; background: #f0ecf4; font-size: 12px; font-weight: 750;
 }
 .font-tools button:hover, .copy-button:hover, .to-top:hover { background: #e3ddec; }
+.copy-segments { display: flex; gap: 6px; flex-wrap: wrap; margin-left: auto; }
 .subtitle-list { display: grid; gap: 10px; }
 .subtitle-card {
   display: grid; grid-template-columns: 118px 1fr; gap: 20px; padding: 24px 26px; border: 1px solid var(--line);
