@@ -132,14 +132,15 @@ MAX_ATTEMPTS = 3
 
 
 def run_batch(batch: Batch, *, pipeline, job_factory, sleep, on_persist) -> None:
-    """顺序队列状态机。pipeline/job_factory/sleep/on_persist 全注入,离线可测。
+    """顺序队列状态机。每轮重新扫描 queued——支持运行中被外部重新入队(如批量页「重试」)。
 
     单集:running→pipeline 成功→job_factory→done;失败 attempts<3→退避后重试当前集;
-    3 次→failed 跳过继续。集间(非最后一集)sleep(interval_sec)。全部结束 state=finished。
+    3 次→failed 跳过继续。处理完一集后若仍有 queued 则 sleep(interval)。全部结束 state=finished。
     """
-    pending = [item for item in batch.items if item.status == "queued"]
-    for index, item in enumerate(pending):
-        is_last = index == len(pending) - 1
+    while True:
+        item = next((i for i in batch.items if i.status == "queued"), None)
+        if item is None:
+            break
         while True:
             item.status, item.error = "running", ""
             on_persist(batch)
@@ -159,7 +160,7 @@ def run_batch(batch: Batch, *, pipeline, job_factory, sleep, on_persist) -> None
                 item.status = "queued"
                 on_persist(batch)
                 sleep(backoff_seconds(item.attempts))
-        if not is_last:
+        if any(i.status == "queued" for i in batch.items):
             sleep(batch.interval_sec)
     batch.state = "finished"
     on_persist(batch)

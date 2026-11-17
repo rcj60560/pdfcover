@@ -737,38 +737,44 @@ def _persist(batch: batch_core.Batch) -> None:
         batch_core.save_batch(batch, BATCH_DIR)
 
 
-def _start_batch_thread(batch: batch_core.Batch) -> None:
-    def _say_dummy(message):  # 批量集内日志走服务控制台;阅读页日志区留空
-        print(f"[batch {batch.batch_id}] {message}", flush=True)
+def _start_batch_thread(batch: batch_core.Batch) -> bool:
+    with _batch_lock:
+        thread = BATCH_THREADS.get(batch.batch_id)
+        if thread is not None and thread.is_alive():
+            return False  # 已有线程在跑,绝不双起
 
-    def _pipeline(url: str):
-        return TRANSCRIBE_PIPELINE(url, "none", "small.en", log=_say_dummy)
+        def _say_dummy(message):  # 批量集内日志走服务控制台;阅读页日志区留空
+            print(f"[batch {batch.batch_id}] {message}", flush=True)
 
-    def _job_factory(item, result):
-        job = Job(video=ExtractedVideo(
-            title=f"{item.title}", source_url=f"{batch.source_url}?p={item.p}",
-            uploader="", duration=float(item.duration), tracks=(), warnings=()))
-        job.rows = result.rows
-        english_text, _ = direct_generate.split_methods(result.methods)
-        job.english_label = english_text or "语音识别"
-        job.chinese_label = "待词典对照"
-        job.transcribe.phase = "done"
-        job.transcribe.total = len(result.rows)
-        job.transcribe.done = len(result.rows)
-        with _batch_lock:
-            key = uuid4().hex
-            BATCH_JOBS[key] = job
-        return key
+        def _pipeline(url: str):
+            return TRANSCRIBE_PIPELINE(url, "none", "small.en", log=_say_dummy)
 
-    thread = Thread(
-        target=batch_core.run_batch,
-        args=(batch,),
-        kwargs={"pipeline": _pipeline, "job_factory": _job_factory,
-                "sleep": time.sleep, "on_persist": _persist},
-        daemon=True,
-    )
-    BATCH_THREADS[batch.batch_id] = thread
+        def _job_factory(item, result):
+            job = Job(video=ExtractedVideo(
+                title=f"{item.title}", source_url=f"{batch.source_url}?p={item.p}",
+                uploader="", duration=float(item.duration), tracks=(), warnings=()))
+            job.rows = result.rows
+            english_text, _ = direct_generate.split_methods(result.methods)
+            job.english_label = english_text or "语音识别"
+            job.chinese_label = "待词典对照"
+            job.transcribe.phase = "done"
+            job.transcribe.total = len(result.rows)
+            job.transcribe.done = len(result.rows)
+            with _batch_lock:
+                key = uuid4().hex
+                BATCH_JOBS[key] = job
+            return key
+
+        thread = Thread(
+            target=batch_core.run_batch,
+            args=(batch,),
+            kwargs={"pipeline": _pipeline, "job_factory": _job_factory,
+                    "sleep": time.sleep, "on_persist": _persist},
+            daemon=True,
+        )
+        BATCH_THREADS[batch.batch_id] = thread
     thread.start()
+    return True
 
 
 @app.post("/api/batch/list")  # 注意:与 GET /api/batch/list 同路径不同方法,Flask 各自注册

@@ -188,6 +188,25 @@ def test_run_batch_resume_skips_done_items():
     assert batch.state == "finished"
 
 
+def test_run_batch_rescans_requeued_item():
+    batch = _mk_batch([1])
+    batch.items.append(batch_core.BatchItem(p=2, title="p02", duration=100,
+                                            status="failed", attempts=3))
+    seen = []
+
+    def on_persist(b):
+        # 模拟批量页在 p1 处理期间对失败集 p2 点了「重试」(外部重新入队)
+        if b.items[0].status == "running" and b.items[1].status == "failed":
+            b.items[1].status = "queued"
+
+    batch_core.run_batch(batch, pipeline=lambda url: seen.append(url) or "r",
+                         job_factory=lambda i, r: f"job-{i.p}",
+                         sleep=lambda s: None, on_persist=on_persist)
+    assert [i.status for i in batch.items] == ["done", "done"]
+    assert [i.p for i in batch.items] == [1, 2]
+    assert len(seen) == 2 and seen[0].endswith("?p=1") and seen[1].endswith("?p=2")
+
+
 import app as app_module  # noqa: E402  (BASE 已在 sys.path)
 
 
@@ -260,3 +279,26 @@ def test_batch_job_visible_to_job_or_error(flask_client):
     assert app_module._job_or_error("bj1") is job
     with pytest.raises(LookupError):
         app_module._job_or_error("nope")
+
+
+def test_start_batch_thread_guard_against_double_start(monkeypatch, tmp_path):
+    import threading as _th
+    started = []
+    class FakeThread:
+        def __init__(self, target, args=(), kwargs=None, daemon=False):
+            self.target, self.args, self.kwargs = target, args, kwargs or {}
+            self._alive = False
+        def start(self):
+            started.append(1)
+            self._alive = True
+        def is_alive(self):
+            return self._alive
+    monkeypatch.setattr(app_module, "Thread", FakeThread)
+    monkeypatch.setattr(app_module, "BATCH_DIR", tmp_path)
+    app_module.BATCHES.clear(); app_module.BATCH_THREADS.clear(); app_module.BATCH_JOBS.clear()
+    b = batch_core.Batch(batch_id="g1", source_url="u", title="t", created_at="c")
+    b.items = [batch_core.BatchItem(p=1, title="p1", duration=60)]
+    app_module.BATCHES["g1"] = b
+    assert app_module._start_batch_thread(b) is True
+    assert app_module._start_batch_thread(b) is False   # 已活线程→拒绝双起
+    assert len(started) == 1
