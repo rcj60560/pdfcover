@@ -307,8 +307,50 @@ def _video_public(video: ExtractedVideo) -> dict:
     }
 
 
+def _build_batch_job(title: str, url: str, duration: float, result) -> Job:
+    """批量集的 Job 组装:队列完成与重启后按缓存重建共用。"""
+    job = Job(video=ExtractedVideo(
+        title=title, source_url=url, uploader="",
+        duration=float(duration), tracks=(), warnings=()))
+    job.rows = result.rows
+    english_text, _ = direct_generate.split_methods(result.methods)
+    job.english_label = english_text or "语音识别"
+    job.chinese_label = "待词典对照"
+    job.transcribe.phase = "done"
+    job.transcribe.total = len(result.rows)
+    job.transcribe.done = len(result.rows)
+    return job
+
+
+def _rehydrate_batch_job(job_id: str) -> Job | None:
+    """服务重启后批量job只剩指针:按转写缓存重建(命中即秒回)。
+
+    2026-11-20 踩坑:批次文件里 done 项的 job_id 指向的 Job 只在内存,
+    重启即 404,「去处理/排版」全断。缓存键=归一化URL,稳定可重放。
+    """
+    for batch in BATCHES.values():
+        item = next((i for i in batch.items if i.job_id == job_id), None)
+        if item is None or item.status != "done":
+            continue
+        url = f"{batch.source_url}?p={item.p}"
+        try:
+            result = TRANSCRIBE_PIPELINE(
+                url, "none", "small.en",
+                log=lambda m: print(f"[rehydrate p{item.p}] {m}", flush=True))
+        except Exception as exc:  # noqa: BLE001 - 重建失败降级为原404口径
+            print(f"[rehydrate p{item.p}] 失败: {exc}", flush=True)
+            continue
+        job = _build_batch_job(item.title, url, item.duration, result)
+        with _batch_lock:
+            BATCH_JOBS[job_id] = job
+        return job
+    return None
+
+
 def _job_or_error(job_id: str) -> Job:
     job = jobs.get(job_id) or BATCH_JOBS.get(job_id)
+    if job is None:
+        job = _rehydrate_batch_job(job_id)  # 批量job重启后按缓存懒重建
     if job is None:
         raise LookupError("任务已过期，请重新读取字幕")
     return job
@@ -616,6 +658,13 @@ def save_raw_chinese(job_id: str):
 def align_latest():
     """Claude 捞最近一个待排版任务：英文块 + 词典原始中文（本地页面流程）。"""
     key, job = jobs.latest(lambda item: bool(item.raw_chinese.strip()))
+    if key is None:
+        # 批量job在独立字典不在LRU库里,补扫(否则批量集的兜底排版通道断裂)
+        with _batch_lock:
+            for k, j in reversed(list(BATCH_JOBS.items())):
+                if j.raw_chinese.strip():
+                    key, job = k, j
+                    break
     if not key or job is None or not job.rows:
         return jsonify(ok=False, error="当前没有待排版的任务（需先保存词典中文）"), 404
     return jsonify(
@@ -750,16 +799,8 @@ def _start_batch_thread(batch: batch_core.Batch) -> bool:
             return TRANSCRIBE_PIPELINE(url, "none", "small.en", log=_say_dummy)
 
         def _job_factory(item, result):
-            job = Job(video=ExtractedVideo(
-                title=f"{item.title}", source_url=f"{batch.source_url}?p={item.p}",
-                uploader="", duration=float(item.duration), tracks=(), warnings=()))
-            job.rows = result.rows
-            english_text, _ = direct_generate.split_methods(result.methods)
-            job.english_label = english_text or "语音识别"
-            job.chinese_label = "待词典对照"
-            job.transcribe.phase = "done"
-            job.transcribe.total = len(result.rows)
-            job.transcribe.done = len(result.rows)
+            url = f"{batch.source_url}?p={item.p}"
+            job = _build_batch_job(item.title, url, item.duration, result)
             with _batch_lock:
                 key = uuid4().hex
                 BATCH_JOBS[key] = job
