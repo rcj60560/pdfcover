@@ -227,3 +227,17 @@ footer { margin-top: 42px; padding: 16px 2px 0; border-top: 1px solid rgba(80,66
 .batch-table .op a, .batch-table .op button { color: var(--violet); background: none; border: none; cursor: pointer; font-size: 13px; font-weight: 600; padding: 0; }
 .batch-saved-title { margin: 14px 0 6px; font-size: 14px; }
 .batch-saved-item { display: flex; gap: 10px; align-items: center; padding: 6px 0; font-size: 13px; }
+
+/* 批量工作台v2:X删除 + 行内处理面板 */
+.batch-run-head { display: flex; align-items: flex-start; gap: 12px; }
+.batch-run-head .batch-progress { flex: 1; }
+.batch-x { border: none; background: none; color: #c62828; font-weight: 700; cursor: pointer; font-size: 13px; padding: 4px 6px; }
+.batch-x:hover { text-decoration: underline; }
+.batch-saved-item .batch-x { margin-left: auto; }
+.batch-work-row td { background: #faf8fc; padding: 14px 18px; }
+.batch-work { display: flex; flex-direction: column; gap: 10px; }
+.batch-work-segs { display: flex; flex-wrap: wrap; gap: 6px; }
+.batch-seg-loading { color: var(--muted); font-size: 13px; }
+.batch-work textarea { width: 100%; border: 1px solid var(--line); border-radius: 10px; padding: 10px 12px; font-size: 14px; box-sizing: border-box; }
+.batch-work-status { font-size: 13px; color: var(--muted); }
+.st-aligned { color: #6a4c93; }

@@ -131,13 +131,16 @@ def load_batches(directory: Path) -> list[Batch]:
 MAX_ATTEMPTS = 3
 
 
-def run_batch(batch: Batch, *, pipeline, job_factory, sleep, on_persist) -> None:
+def run_batch(batch: Batch, *, pipeline, job_factory, sleep, on_persist, should_stop=None) -> None:
     """顺序队列状态机。每轮重新扫描 queued——支持运行中被外部重新入队(如批量页「重试」)。
 
     单集:running→pipeline 成功→job_factory→done;失败 attempts<3→退避后重试当前集;
     3 次→failed 跳过继续。处理完一集后若仍有 queued 则 sleep(interval)。全部结束 state=finished。
+    should_stop():每轮循环边界检查,外部要求停止(批次被X删除)时直接返回——不置 finished、不再落盘。
     """
     while True:
+        if should_stop is not None and should_stop():
+            return
         item = next((i for i in batch.items if i.status == "queued"), None)
         if item is None:
             break

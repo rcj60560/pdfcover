@@ -1,6 +1,7 @@
 """批量模式纯逻辑测试(离线,不触网)。"""
 from __future__ import annotations
 
+import json
 import sys
 import importlib.util
 from pathlib import Path
@@ -362,3 +363,56 @@ def test_run_claude_align_timeout_kills_process_tree(monkeypatch):
     with pytest.raises(RuntimeError, match="排版超时"):
         alignment_agent.run_claude_align("PROMPT")
     assert killed == [4321]  # 超时即杀树根(cmd壳),node子进程随之收命
+
+
+# ---- 工作台v2:X删除批次(含缓存清理)/队列可停 ----
+
+def test_translation_store_delete_removes_entry(tmp_path):
+    from translation_store import TranslationStore
+    store = TranslationStore(tmp_path / "t.sqlite3")
+    store.put("audio-transcript-v1", "K", {"a": 1})
+    assert store.get("audio-transcript-v1", "K") == {"a": 1}
+    store.delete("audio-transcript-v1", "K")
+    assert store.get("audio-transcript-v1", "K") is None
+    store.delete("audio-transcript-v1", "missing")  # 不存在不炸
+
+
+def test_run_batch_should_stop_halts_queue():
+    batch = _mk_batch([1, 2])
+    stop = {"flag": False}
+
+    def on_persist(b):
+        # 第1集落盘完成后要求停止(模拟用户删除批次)
+        if b.items[0].status == "done" and b.items[1].status == "queued":
+            stop["flag"] = True
+
+    seen = []
+    batch_core.run_batch(batch, pipeline=lambda url: seen.append(url) or "r",
+                         job_factory=lambda i, r: f"j{i.p}", sleep=lambda s: None,
+                         on_persist=on_persist, should_stop=lambda: stop["flag"])
+    assert len(seen) == 1 and seen[0].endswith("?p=1")
+    assert batch.items[1].status == "queued"   # 第2集未被碰
+    assert batch.state == "running"            # 中止≠跑完,不置finished
+
+
+def test_batch_delete_removes_file_entries_and_cache(flask_client, monkeypatch, tmp_path):
+    import direct_generate as dg
+    from translation_store import default_store
+    monkeypatch.setenv("BILIBILI_CACHE_DIR", str(tmp_path / "cache"))
+    client, mp = flask_client
+    _fake_view_api(mp, [1, 2])
+    mp.setattr(app_module.batch_core, "run_batch", lambda b, **kw: None)  # 不起真队列
+    store = default_store()
+    key1 = json.dumps(["https://www.bilibili.com/video/BV1gK4y1o7Ni?p=1",
+                       "small.en", dg.DEFAULT_TRANSCRIBE_PROMPT], ensure_ascii=False)
+    store.put("audio-transcript-v1", key1, {"title": "t", "source_url": "u", "rows": [], "methods": []})
+    bid = client.post("/api/batch/start", json={"url": "BV1gK4y1o7Ni", "ps": [1, 2]}).get_json()["batch_id"]
+    assert (app_module.BATCH_DIR / f"{bid}.json").exists()
+    assert store.get("audio-transcript-v1", key1) is not None
+
+    resp = client.post(f"/api/batch/{bid}/delete")
+    assert resp.get_json()["ok"] is True
+    assert bid not in app_module.BATCHES
+    assert not (app_module.BATCH_DIR / f"{bid}.json").exists()
+    assert store.get("audio-transcript-v1", key1) is None   # 该批集缓存被清
+    assert client.post(f"/api/batch/{bid}/delete").get_json()["ok"] is False  # 再删=404语义

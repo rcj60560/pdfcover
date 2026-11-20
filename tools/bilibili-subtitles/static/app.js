@@ -424,7 +424,7 @@ restoreForm();
 loadServerStarted();
 
 // ---- 批量模式 ----
-const batchState = { episodes: [], batchId: "", timer: null };
+const batchState = { episodes: [], batchId: "", timer: null, expanded: null, segments: {}, aligned: new Set() };
 
 // B站标题可能带引号/尖括号，进 innerHTML 前必须转义
 const escHtml = (s) => String(s)
@@ -496,6 +496,7 @@ function pollBatch() {
     .then((r) => r.json())
     .then((data) => {
       if (!data.ok) return;
+      batchState._lastItems = data.batch.items;   // 行内排版等工作台操作要按 p 找 item
       renderBatch(data.batch);
       const unfinished = data.batch.items.filter((i) => i.status === "queued" || i.status === "running").length;
       if (unfinished > 0 || data.batch.state === "running") {
@@ -507,8 +508,10 @@ function pollBatch() {
 
 function renderBatch(batch) {
   const done = batch.items.filter((i) => i.status === "done").length;
+  const aligned = batch.items.filter((i) => batchState.aligned.has(i.job_id)).length;
   $("batch-progress-text").textContent =
     `${batch.title} —— ${done}/${batch.items.length} 完成` +
+    (aligned ? `，已排版 ${aligned}` : "") +
     (batch.items.some((i) => i.status === "failed") ? `，${batch.items.filter((i) => i.status === "failed").length} 失败` : "");
   $("batch-progress-fill").style.width = `${(done / batch.items.length) * 100}%`;
   const tbody = $("batch-tbody");
@@ -517,14 +520,22 @@ function renderBatch(batch) {
     const tr = document.createElement("tr");
     const ops = [];
     if (item.status === "done") {
-      ops.push(`<a href="javascript:void(0)" onclick="openBatchJob('${item.job_id}')">去处理</a>`);
+      if (batchState.aligned.has(item.job_id)) {
+        ops.push(`<a href="/api/jobs/${item.job_id}/download/md" download>ⓛ 下载md</a>`);
+      }
+      ops.push(`<button onclick="toggleBatchWork(${item.p})">${batchState.expanded === item.p ? "收起 ▴" : "处理 ▾"}</button>`);
+      ops.push(`<a href="javascript:void(0)" onclick="openBatchJob('${item.job_id}')">阅读页</a>`);
     } else if (item.status === "failed") {
       ops.push(`<button onclick="retryBatchItem(${item.p})">重试</button>`);
     }
     tr.innerHTML = `<td>p${item.p}</td><td title="${escHtml(item.title)}">${escHtml(item.title.slice(0, 40))}</td>` +
-      `<td class="st st-${item.status}">${batchStatusBadge(item.status)}</td>` +
+      `<td class="st st-${batchState.aligned.has(item.job_id) ? "aligned" : item.status}">` +
+      `${batchState.aligned.has(item.job_id) ? "📝 已排版" : batchStatusBadge(item.status)}</td>` +
       `<td class="op">${ops.join(" ")}</td>`;
     tbody.append(tr);
+    if (item.status === "done" && batchState.expanded === item.p) {
+      tbody.append(buildBatchWorkRow(item));
+    }
   });
 }
 
@@ -556,11 +567,103 @@ async function loadSavedBatches() {
         ? `<button onclick="resumeBatch('${b.batch_id}')">恢复</button>` : "";
       const view = b.state === "running" || b.done
         ? `<a href="javascript:void(0)" onclick="viewBatch('${b.batch_id}')">查看</a>` : "";
+      const del = `<button class="batch-x" onclick="deleteBatch('${b.batch_id}')">✕</button>`;
       row.innerHTML = `<b>${escHtml(b.title.slice(0, 26))}</b><span>${b.done}/${b.total} · ` +
-        `${b.state === "finished" ? "已完成" : "未完成"}</span>${view}${resume}`;
+        `${b.state === "finished" ? "已完成" : "未完成"}</span>${view}${resume}${del}`;
       wrap.append(row);
     });
   } catch { /* 静默 */ }
+}
+
+async function deleteBatch(batchId) {
+  if (!window.confirm("删除这个批次？\n批次记录 + 该批各集的转写缓存一并清除，\n下次重拉这些集要重新语音识别(约5分钟/集)。")) return;
+  try {
+    await api(`/api/batch/${batchId}/delete`, {});
+    if (batchState.batchId === batchId) {  // 删的是正在看的批次:退回待命态
+      if (batchState.timer) window.clearTimeout(batchState.timer);
+      batchState.batchId = ""; batchState.expanded = null; batchState.aligned.clear();
+      $("batch-run").hidden = true;
+      $("batch-episodes").hidden = true;
+    }
+    loadSavedBatches();
+  } catch (error) { setStatus(error.message, "error"); }
+}
+
+// ---- 行内工作台:分段复制 → 粘贴中文 → 排版(与后台拉取并行) ----
+
+function buildBatchWorkRow(item) {
+  const tr = document.createElement("tr");
+  tr.className = "batch-work-row";
+  const segs = batchState.segments[item.job_id];
+  const segButtons = segs
+    ? segs.map((s, i) =>
+        `<button class="copy-button" onclick="copyBatchSegment('${item.job_id}', ${i}, this)">📋 第${i + 1}段(${(s.length / 1000).toFixed(1)}k)</button>`).join(" ")
+    : `<span class="batch-seg-loading">分段载入中…</span>`;
+  const aligned = batchState.aligned.has(item.job_id);
+  tr.innerHTML = `<td colspan="4"><div class="batch-work">
+    <div class="batch-work-segs">${segButtons}</div>
+    <textarea id="batch-zh-${item.p}" rows="6" ${aligned ? "hidden" : ""}
+      placeholder="词典翻译的整段中文粘到这里(多段依次粘入,换行分隔)"></textarea>
+    ${aligned ? `<a class="primary export md" href="/api/jobs/${item.job_id}/download/md" download>ⓛ 下载md</a>` :
+      `<button class="primary" onclick="alignBatchItem(${item.p})">🤖 排版</button>`}
+    <span class="batch-work-status" id="batch-work-status-${item.p}"></span>
+  </div></td>`;
+  if (!segs) { ensureBatchSegments(item.job_id); }
+  return tr;
+}
+
+function toggleBatchWork(p) {
+  batchState.expanded = batchState.expanded === p ? null : p;
+  refreshBatchOnce();
+}
+
+async function ensureBatchSegments(jobId) {
+  if (batchState.segments[jobId]) return;
+  try {
+    const response = await fetch(`/api/jobs/${jobId}/plain-text`);
+    const data = await response.json();
+    batchState.segments[jobId] = (data.segments && data.segments.length ? data.segments : [data.english]).filter(Boolean);
+  } catch {
+    batchState.segments[jobId] = null;  // 载入失败:下次展开重试
+  }
+  refreshBatchOnce();
+}
+
+async function copyBatchSegment(jobId, index, button) {
+  const segs = batchState.segments[jobId] || [];
+  const label = button.textContent;
+  try {
+    await navigator.clipboard.writeText(segs[index]);
+    button.textContent = `第${index + 1}段已复制 ✓`;
+  } catch { button.textContent = "复制失败"; }
+  window.setTimeout(() => { button.textContent = label; }, 2200);
+}
+
+async function alignBatchItem(p) {
+  const text = $(`batch-zh-${p}`).value.trim();
+  const status = $(`batch-work-status-${p}`);
+  if (!text) { status.textContent = "先粘贴词典翻译的中文"; return; }
+  const job = currentBatchItem(p);
+  status.textContent = "排版中…(本机快档切分,约1-2分钟)";
+  try {
+    const data = await api(`/api/jobs/${job.job_id}/auto-align`, { text });
+    batchState.aligned.add(job.job_id);
+    refreshBatchOnce();
+  } catch (error) {
+    status.textContent = `${error.message}(材料已存,可到 Claude 对话说"排版"兜底)`;
+  }
+}
+
+function currentBatchItem(p) {
+  return batchState._lastItems.find((i) => i.p === p);
+}
+
+function refreshBatchOnce() {
+  if (!batchState.batchId) return;
+  fetch(`/api/batch/${batchState.batchId}`)
+    .then((r) => r.json())
+    .then((data) => { if (data.ok) { batchState._lastItems = data.batch.items; renderBatch(data.batch); } })
+    .catch(() => {});
 }
 
 async function resumeBatch(batchId) {
@@ -593,4 +696,5 @@ $("batch-range-btn").addEventListener("click", () => {
   setBatchChecked([...want].filter((p) => p >= 1 && p <= available));
 });
 $("batch-start").addEventListener("click", startBatch);
+$("batch-delete-current").addEventListener("click", () => deleteBatch(batchState.batchId));
 loadSavedBatches();

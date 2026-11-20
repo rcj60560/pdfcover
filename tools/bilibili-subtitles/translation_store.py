@@ -51,6 +51,11 @@ class TranslationStore:
             db.execute('INSERT OR REPLACE INTO cache VALUES (?, ?, ?)',
                        (namespace, self._key(key), json.dumps(value, ensure_ascii=False)))
 
+    def delete(self, namespace: str, key: str) -> None:
+        """删除单条缓存(批次X删除时清转写);不存在时静默。"""
+        with self.connection() as db:
+            db.execute('DELETE FROM cache WHERE namespace=? AND key=?', (namespace, self._key(key)))
+
     @staticmethod
     def _key(value: str) -> str:
         return hashlib.sha256(value.encode('utf-8')).hexdigest()

@@ -97,9 +97,12 @@
         <div id="batch-episode-list" class="batch-episode-list"></div>
       </div>
       <div id="batch-run" hidden>
-        <div class="batch-progress">
-          <div id="batch-progress-text" class="batch-progress-text"></div>
-          <div class="batch-bar"><div id="batch-progress-fill" class="batch-bar-fill"></div></div>
+        <div class="batch-run-head">
+          <div class="batch-progress">
+            <div id="batch-progress-text" class="batch-progress-text"></div>
+            <div class="batch-bar"><div id="batch-progress-fill" class="batch-bar-fill"></div></div>
+          </div>
+          <button id="batch-delete-current" class="batch-x" type="button" title="删除本批次:批次文件+该批各集转写缓存一并清除">✕ 删除本批次</button>
         </div>
         <table class="batch-table"><tbody id="batch-tbody"></tbody></table>
       </div>

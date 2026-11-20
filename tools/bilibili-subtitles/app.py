@@ -116,6 +116,7 @@ BATCH_DIR = Path(__file__).resolve().parent / "outputs" / "batch"
 BATCHES: dict[str, batch_core.Batch] = {}
 BATCH_THREADS: dict[str, Thread] = {}
 BATCH_JOBS: dict[str, Job] = {}
+_BATCH_CANCELLED: set[str] = set()  # X删除的批次:队列线程见旗即停,持久化被守卫拦住
 _batch_lock = Lock()
 
 for _saved in batch_core.load_batches(BATCH_DIR):  # 启动即恢复(不自动跑,等用户点「恢复」)
@@ -782,6 +783,8 @@ def _batch_public(batch: batch_core.Batch) -> dict:
 
 
 def _persist(batch: batch_core.Batch) -> None:
+    if batch.batch_id in _BATCH_CANCELLED:
+        return  # 已被X删除:不许把文件写回来
     with _batch_lock:
         batch_core.save_batch(batch, BATCH_DIR)
 
@@ -810,7 +813,8 @@ def _start_batch_thread(batch: batch_core.Batch) -> bool:
             target=batch_core.run_batch,
             args=(batch,),
             kwargs={"pipeline": _pipeline, "job_factory": _job_factory,
-                    "sleep": time.sleep, "on_persist": _persist},
+                    "sleep": time.sleep, "on_persist": _persist,
+                    "should_stop": lambda: batch.batch_id in _BATCH_CANCELLED},
             daemon=True,
         )
         BATCH_THREADS[batch.batch_id] = thread
@@ -923,6 +927,37 @@ def batch_resume(batch_id: str):
     if thread is not None and thread.is_alive():
         return jsonify(ok=True)  # 已在跑,幂等
     _start_batch_thread(batch)
+    return jsonify(ok=True)
+
+
+@app.post("/api/batch/<batch_id>/delete")
+def batch_delete(batch_id: str):
+    """X删除:批次文件、内存登记、该批各集的转写缓存一并清掉(用户拍板的A语义)。
+
+    队列线程不强杀——置取消旗,当前集跑完后在循环边界自行退出;_persist 的守卫
+    保证已删批次不会被线程把文件写回来。
+    """
+    batch = BATCHES.get(batch_id)
+    if batch is None:
+        return jsonify(ok=False, error="批次不存在"), 404
+    _BATCH_CANCELLED.add(batch_id)
+    from translation_store import default_store
+    store = default_store()
+    for item in batch.items:  # 清转写缓存:键口径与 generate_rows_from_audio 完全一致
+        url = core.normalize_bilibili_url(f"{batch.source_url}?p={item.p}")
+        key = json.dumps([url, "small.en", direct_generate.DEFAULT_TRANSCRIBE_PROMPT],
+                         ensure_ascii=False)
+        try:
+            store.delete("audio-transcript-v1", key)
+        except (OSError, ValueError):
+            pass  # 缓存清理尽力而为,不阻塞批次删除
+    job_ids = [item.job_id for item in batch.items if item.job_id]
+    with _batch_lock:
+        for job_id in job_ids:
+            BATCH_JOBS.pop(job_id, None)
+        BATCHES.pop(batch_id, None)
+        BATCH_THREADS.pop(batch_id, None)
+    (BATCH_DIR / f"{batch_id}.json").unlink(missing_ok=True)
     return jsonify(ok=True)
 
 
