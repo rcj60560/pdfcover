@@ -349,8 +349,18 @@ async function applyAlignedResult() {
 }
 
 async function stopServer() {
+  // 批量队列在跑时给出专门警告:停服务=杀进程,正在转写的集子进度作废,还得手动恢复
+  let batchHint = "";
+  try {
+    const data = await (await fetch("/api/batch/list", { cache: "no-store" })).json();
+    const active = (data.batches || []).filter((b) => b.state === "running");
+    const remaining = active.reduce((n, b) => n + (b.total - b.done - b.failed), 0);
+    if (active.length && remaining > 0) {
+      batchHint = `\n\n⚠️ 批量队列还在跑:剩 ${remaining} 集。停了这集转写白跑,重启后要去「已有批次」点恢复!挂机请直接关标签页,别停服务。`;
+    }
+  } catch { /* 拿不到批次信息就按普通提示 */ }
   const confirmed = window.confirm(
-    "确定停止服务？进行中的任务会中断；已完成的转写会保留在本地缓存。");
+    `确定停止服务？进行中的任务会中断；已完成的转写会保留在本地缓存。${batchHint}`);
   if (!confirmed) return;
   const button = $("stop-server");
   button.disabled = true;
