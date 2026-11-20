@@ -598,7 +598,13 @@ function buildBatchWorkRow(item) {
   const segButtons = segs
     ? segs.map((s, i) =>
         `<button class="copy-button" onclick="copyBatchSegment('${item.job_id}', ${i}, this)">📋 第${i + 1}段(${(s.length / 1000).toFixed(1)}k)</button>`).join(" ")
-    : `<span class="batch-seg-loading">分段载入中…</span>`;
+    : `<span class="batch-seg-loading">分段载入中,稍等即出对应中文框…</span>`;
+  // 几段英文=几个中文框,一一对应,不混装
+  const zhBoxes = segs
+    ? segs.map((s, i) => `<label class="batch-zh">第${i + 1}段中文
+        <textarea id="batch-zh-${item.p}-${i}" rows="5" oninput="saveZhDraft(${item.p}, ${i}, this.value)"
+          placeholder="复制第${i + 1}段英文 → 词典翻译 → 整段粘到这里"></textarea></label>`).join("")
+    : "";
   const aligned = batchState.aligned.has(item.job_id);
   const aligning = batchState.aligning.has(item.job_id);
   // 状态文案来自 aligning/alignNotes:3秒轮询重绘后依然存活,用户才看得到"正在排版"
@@ -606,15 +612,23 @@ function buildBatchWorkRow(item) {
   tr.innerHTML = `<td colspan="4"><div class="batch-work">
     <div class="batch-work-segs">${segButtons}</div>
     ${aligned ? `<a class="primary export md" href="/api/jobs/${item.job_id}/download/md" download>ⓛ 下载md</a>` :
-      `<textarea id="batch-zh-${item.p}" rows="6" oninput="batchState.zhDraft[${item.p}]=this.value"
-        placeholder="词典翻译的整段中文粘到这里(多段依次粘入,换行分隔)"></textarea>
+      `${zhBoxes}
        <button class="primary" ${aligning ? "disabled" : ""} onclick="alignBatchItem(${item.p})">${aligning ? "⏳ 排版中…" : "🤖 排版"}</button>`}
     <span class="batch-work-status" id="batch-work-status-${item.p}">${escHtml(note)}</span>
   </div></td>`;
-  const ta = tr.querySelector(`#batch-zh-${item.p}`);
-  if (ta && batchState.zhDraft[item.p]) ta.value = batchState.zhDraft[item.p];  // 轮询重绘后草稿还原
+  if (segs) {  // 轮询重绘后草稿按段还原
+    const drafts = batchState.zhDraft[item.p] || [];
+    segs.forEach((s, i) => {
+      const ta = tr.querySelector(`#batch-zh-${item.p}-${i}`);
+      if (ta && drafts[i]) ta.value = drafts[i];
+    });
+  }
   if (!segs) { ensureBatchSegments(item.job_id); }
   return tr;
+}
+
+function saveZhDraft(p, index, value) {
+  (batchState.zhDraft[p] = batchState.zhDraft[p] || [])[index] = value;
 }
 
 function toggleBatchWork(p) {
@@ -647,14 +661,23 @@ async function copyBatchSegment(jobId, index, button) {
 async function alignBatchItem(p) {
   const job = currentBatchItem(p);
   if (!job || batchState.aligning.has(job.job_id)) return;   // 防重复点击
-  const text = (($(`batch-zh-${p}`) || {}).value || batchState.zhDraft[p] || "").trim();
-  if (!text) { batchState.alignNotes[p] = "先粘贴词典翻译的中文再点排版"; refreshBatchOnce(); return; }
-  batchState.zhDraft[p] = text;
+  const segCount = (batchState.segments[job.job_id] || []).length;
+  const parts = [];
+  for (let i = 0; i < segCount; i++) {
+    parts.push(((($(`batch-zh-${p}-${i}`) || {}).value || (batchState.zhDraft[p] || [])[i] || "").trim()));
+  }
+  if (!segCount || parts.every((v) => !v)) {
+    batchState.alignNotes[p] = "先粘贴词典翻译的中文再点排版"; refreshBatchOnce(); return;
+  }
+  const missing = parts.map((v, i) => (v ? null : i + 1)).filter(Boolean);
+  if (missing.length) {
+    batchState.alignNotes[p] = `第 ${missing.join("、")} 段中文还没粘,粘齐再排版`; refreshBatchOnce(); return;
+  }
   batchState.alignNotes[p] = "";
   batchState.aligning.add(job.job_id);
   refreshBatchOnce();
   try {
-    await api(`/api/jobs/${job.job_id}/auto-align`, { text });
+    await api(`/api/jobs/${job.job_id}/auto-align`, { text: parts.join("\n\n") });
     batchState.aligned.add(job.job_id);
   } catch (error) {
     batchState.alignNotes[p] = `排版失败:${error.message}(材料已存,可到 Claude 对话说"排版"兜底)`;

@@ -241,3 +241,4 @@ footer { margin-top: 42px; padding: 16px 2px 0; border-top: 1px solid rgba(80,66
 .batch-work textarea { width: 100%; border: 1px solid var(--line); border-radius: 10px; padding: 10px 12px; font-size: 14px; box-sizing: border-box; }
 .batch-work-status { font-size: 13px; color: var(--muted); }
 .st-aligned { color: #6a4c93; }
+.batch-zh { display: flex; flex-direction: column; gap: 4px; font-size: 13px; font-weight: 700; color: var(--muted); }
