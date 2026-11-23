@@ -632,6 +632,7 @@ def import_chinese(job_id: str):
             "请检查复制是否完整（首尾段最容易丢），修好后重新粘贴。")), 400
     job.rows = [replace(row, chinese=chunk) for row, chunk in zip(rows, chunks, strict=True)]
     job.chinese_label = "欧路词典对照"
+    job.raw_chinese = ""  # 已消费:清掉待排版标记,让下一集浮出(2026-11-23 多集排队堵死教训)
     return jsonify(
         ok=True,
         rows=[row.public_dict() for row in job.rows],
